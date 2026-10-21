@@ -1,0 +1,32 @@
+[project]
+name = "tcg-tracker"
+version = "0.1.0"
+description = "Canadian Yu-Gi-Oh price tracker (Scrapy + PostgreSQL)"
+requires-python = ">=3.12"
+dependencies = [
+    "scrapy>=2.13",
+    "psycopg[binary]>=3.2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "ruff>=0.6",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-ra"
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+extend-exclude = [".venv"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "SIM", "UP"]
+
+[tool.ruff.lint.per-file-ignores]
+# test cases are written one realistic title per line; wrapping them hurts readability
+"tests/*" = ["E501"]

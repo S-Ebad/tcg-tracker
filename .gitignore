@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# Local config and secrets
+.env
+
+# Scrapy
+.scrapy/
+httpcache/
+
+# Uncompressed crawl dumps: only the gzipped fixture is committed (see README)
+tests/*.json
+*.jsonl
+
+# Editors
+.idea/
+.vscode/
