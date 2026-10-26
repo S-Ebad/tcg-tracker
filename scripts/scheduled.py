@@ -22,7 +22,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-SPIDERS = ["trinity", "401games", "fusion"]
+# fusion is paused: Shopify rate-limits our requests to its store (HTTP 429, 2026-10-26); needs a crawler access key
+SPIDERS = ["trinity", "401games"]
 PG_BIN = ROOT / ".tools" / "pg" / "Library" / "bin"   # conda-forge Postgres; skipped when absent (Docker)
 PG_DATA = ROOT / ".tools" / "pgdata"
 LOG_DIR = ROOT / "logs"
@@ -193,7 +194,8 @@ def job_check_freshness() -> int:
     limit = float(os.environ.get("FRESHNESS_MAX_HOURS", "26"))
     try:
         ensure_postgres()
-        ages = newest_ok_run_age_hours()
+        # only stores that are scheduled (a paused store would otherwise alert every day)
+        ages = {s: a for s, a in newest_ok_run_age_hours().items() if s in SPIDERS}
     except Exception as e:
         alert(f"tcg-tracker CRITICAL: freshness check could not read the database: {e}")
         return 2

@@ -39,9 +39,11 @@ def test_freshness_alerts_on_stale_and_never_crawled_stores(monkeypatch):
     monkeypatch.setenv("FRESHNESS_MAX_HOURS", "26")
     monkeypatch.setattr(scheduled, "newest_ok_run_age_hours", lambda: {"trinity": 5.0})
     assert scheduled.job_check_freshness() == 0 and sent == []
-    monkeypatch.setattr(scheduled, "newest_ok_run_age_hours", lambda: {"trinity": 30.2, "other": None})
+    monkeypatch.setattr(scheduled, "SPIDERS", ["trinity", "other"])
+    monkeypatch.setattr(scheduled, "newest_ok_run_age_hours",
+                        lambda: {"trinity": 30.2, "other": None, "paused": None})
     assert scheduled.job_check_freshness() == 1
-    assert "trinity (30 h ago)" in sent[0] and "other (never)" in sent[0]
+    assert "trinity (30 h ago)" in sent[0] and "other (never)" in sent[0] and "paused" not in sent[0]
 
 
 def test_crawl_job_alerts_when_the_database_cannot_start(monkeypatch):

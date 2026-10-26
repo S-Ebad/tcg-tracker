@@ -7,7 +7,7 @@ Stores (prices in CAD, in-stock Yu-Gi-Oh singles only):
 |---|---|---|---|
 | **Trinity Hobby** (trinityhobby.com) | `trinity` | Hotyon "USF" search API | ~11,800 listings, 59 requests |
 | **401 Games** (store.401games.ca, Toronto) | `401games` | Fast Simon search API | ~35,000 listings, 141 requests |
-| **Fusion Gaming** (fusiongamingonline.com) | `fusion` | Shopify `products.json` | ~13,800 listings, 58 requests |
+| **Fusion Gaming** (fusiongamingonline.com) | `fusion` | Shopify `products.json` | ~13,800 listings, 58 requests — **paused**: Shopify rate-limits us (429); needs a crawler access key |
 
 Cards line up across stores on the same `card_key`: Trinity–401 share ~9,000, 401–Fusion ~11,500,
 Trinity–Fusion ~4,200, and ~3,700 cards are at all three.
