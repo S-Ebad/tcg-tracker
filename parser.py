@@ -17,6 +17,9 @@ NON_RARITY = {
 } | {e.lower() for e in EDITIONS}
 NON_RARITY_PREFIX = ("ygo_", "attack_", "defense_", "level_", "monster type_",
                      "attribute_", "card type_", "printing_")
+# A newer tag style prefixes some values ("Rarity_Quarter Century Secret Rare", "Printing_1st Edition");
+# 1 item on the 2026 crawl. Stripped so they read like the classic tags.
+TAG_VALUE_PREFIXES = ("rarity_", "printing_")
 CODE_RE = re.compile(r"\[([A-Z0-9]{2,6})-(?:([A-Z]{2})([A-Z]*))?(\d{1,4}[A-Z]?)\]")
 RARITY_ABBR = {"UR": "Ultra Rare", "SR": "Super Rare", "SCR": "Secret Rare", "R": "Rare",
                "C": "Common", "CR": "Collector's Rare", "UTR": "Ultimate Rare", "GR": "Gold Rare",
@@ -61,6 +64,17 @@ def _split_condition(label: str):
     return CONDITIONS.get(s.lower()), edition
 
 
+def _normalise_tags(tags: list[str]) -> list[str]:
+    out = []
+    for t in tags:
+        for p in TAG_VALUE_PREFIXES:
+            if t.lower().startswith(p):
+                t = t[len(p):]
+                break
+        out.append(t)
+    return out
+
+
 def _rarity(tags: list[str]) -> str | None:
     c = [t for t in tags
          if t.lower() not in NON_RARITY and not t.lower().startswith(NON_RARITY_PREFIX)
@@ -88,7 +102,7 @@ def _slug(s: str) -> str:
 def parse_item(item: dict) -> CardRec:
     probs: list[str] = []
     title = item["title"]
-    tags = item.get("tags") or []
+    tags = _normalise_tags(item.get("tags") or [])
 
     m = CODE_RE.search(title)
     set_code = lang = number = None

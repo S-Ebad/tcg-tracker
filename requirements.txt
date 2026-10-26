@@ -1,0 +1,4 @@
+# Direct runtime dependencies, pinned to the versions the test suite last passed with.
+# Ranges live in pyproject.toml; bump these deliberately and let CI confirm.
+Scrapy==2.19.0
+psycopg[binary]==3.3.6

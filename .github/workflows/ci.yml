@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.14"]   # oldest supported (pyproject) and the one used for development
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: tcg
+          POSTGRES_PASSWORD: tcg
+          POSTGRES_DB: tcg_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U tcg -d tcg_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      # Database tests (test_db, test_monitoring, test_e2e_spider) wipe and rebuild this database's schema.
+      TEST_DATABASE_URL: postgresql://tcg:tcg@localhost:5432/tcg_test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: requirements*.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Lint
+        run: ruff check .
+
+      - name: Test
+        run: pytest -ra
