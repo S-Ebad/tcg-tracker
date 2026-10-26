@@ -18,15 +18,15 @@ needs_db = pytest.mark.skipif(not URL.rsplit("/", 1)[-1].endswith("_test"),
 MIDDLEWARES = {"mock_site.SavedSiteMiddleware": 1, "tcg_tracker.middlewares.RetryAfterMiddleware": 560}
 
 
-def crawl(tmp_path, scenario="ok", database_url="", extra=()):
-    log, requests = tmp_path / f"{scenario}.log", tmp_path / f"{scenario}.requests"
+def crawl(tmp_path, scenario="ok", database_url="", extra=(), spider="trinity"):
+    log, requests = tmp_path / f"{spider}-{scenario}.log", tmp_path / f"{spider}-{scenario}.requests"
     env = os.environ | {
         "PYTHONPATH": os.pathsep.join([str(ROOT / "tests"), str(ROOT)]),
         "TCG_CONTACT_EMAIL": "test@example.com", "DATABASE_URL": database_url,
         "MOCK_SCENARIO": scenario, "MOCK_REQUEST_LOG": str(requests),
         "ALERT_DISCORD_WEBHOOK_URL": "", "ALERT_EMAIL_TO": "",
     }
-    cmd = [sys.executable, "-m", "scrapy", "crawl", "trinity",
+    cmd = [sys.executable, "-m", "scrapy", "crawl", spider,
            "-s", f"DOWNLOADER_MIDDLEWARES={json.dumps(MIDDLEWARES)}",
            "-s", "DOWNLOAD_DELAY=0", "-s", "AUTOTHROTTLE_ENABLED=False", "-s", f"LOG_FILE={log}", *extra]
     proc = subprocess.run(cmd, cwd=ROOT, env=env, capture_output=True, text=True, timeout=600)
@@ -112,3 +112,58 @@ def test_rate_limited_store_page_falls_back_and_alerts(tmp_path, test_db):
     assert status == "ok"
     # 4 x 429 out of ~65 downloads is above the 5% limit, so both alerts are expected
     assert sorted(a.split(":")[0] for a in alerts) == ["[warning] api_key_fallback", "[warning] http_error_rate"]
+
+
+# --- 401 Games (Fast Simon) ---------------------------------------------------------------------------------------
+
+def fixture401_count():
+    import gzip
+
+    with gzip.open(ROOT / "tests" / "games401_fastsimon.json.gz", "rt", encoding="utf-8") as f:
+        return len(json.load(f))
+
+
+@needs_db
+def test_401_full_crawl_then_cached_run(tmp_path, test_db):
+    n = fixture401_count()
+    code, log, urls = crawl(tmp_path, database_url=test_db, spider="401games")
+    assert code == 0, log[-2000:]
+    status, seen, alerts = query("SELECT status, items_seen, alerts FROM scrape_runs")[0]
+    assert (status, seen, alerts) == ("ok", n, [])
+    assert query("SELECT count(*) FROM listings")[0][0] == n
+    assert query("SELECT count(*) FROM variants WHERE quantity IS NOT NULL")[0][0] == 0  # 401 has no quantities
+    assert any("store.401games.ca/collections/yugioh-singles" in u for u in urls)
+    assert sum("api.fastsimon.com" in u for u in urls) == -(-n // 250)
+
+    second = tmp_path / "second"
+    second.mkdir()
+    code, log, urls = crawl(second, database_url=test_db, spider="401games")
+    assert code == 0, log[-2000:]
+    assert not any("store.401games.ca" in u for u in urls if "robots.txt" not in u)
+    assert query("SELECT status FROM scrape_runs ORDER BY id") == [("ok",), ("ok",)]
+
+
+@needs_db
+def test_401_truncated_api_fails_and_marks_nothing_out(tmp_path, test_db):
+    code, log, _ = crawl(tmp_path, database_url=test_db, spider="401games")
+    assert code == 0, log[-2000:]
+    bad = tmp_path / "bad"
+    bad.mkdir()
+    crawl(bad, scenario="truncated", database_url=test_db, spider="401games")
+    status, notes = query("SELECT status, notes FROM scrape_runs ORDER BY id DESC LIMIT 1")[0]
+    assert status == "failed" and "empty_page" in notes
+    assert query("SELECT count(*) FROM listings WHERE NOT in_stock") == [(0,)]
+
+
+@needs_db
+def test_both_stores_share_card_keys(tmp_path, test_db):
+    for spider in ("trinity", "401games"):
+        d = tmp_path / spider
+        d.mkdir()
+        code, log, _ = crawl(d, database_url=test_db, spider=spider)
+        assert code == 0, log[-2000:]
+    shared = query("""SELECT count(*) FROM (SELECT l.card_key FROM listings l JOIN stores s ON s.id = l.store_id
+                      WHERE l.card_key IS NOT NULL GROUP BY l.card_key HAVING count(DISTINCT s.slug) = 2) x""")[0][0]
+    assert shared > 1000, f"only {shared} card keys appear at both stores"
+    stores = {r[0] for r in query("SELECT DISTINCT store FROM current_best_prices")}
+    assert stores == {"trinity", "401games"}

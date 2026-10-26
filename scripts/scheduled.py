@@ -22,7 +22,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-SPIDERS = ["trinity"]
+SPIDERS = ["trinity", "401games"]
 PG_BIN = ROOT / ".tools" / "pg" / "Library" / "bin"   # conda-forge Postgres; skipped when absent (Docker)
 PG_DATA = ROOT / ".tools" / "pgdata"
 LOG_DIR = ROOT / "logs"

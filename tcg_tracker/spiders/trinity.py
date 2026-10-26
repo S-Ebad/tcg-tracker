@@ -21,6 +21,7 @@ import scrapy
 from scrapy.exceptions import CloseSpider
 from scrapy.spidermiddlewares.httperror import HttpError
 
+import parser
 from tcg_tracker.config_cache import StoreConfigCache
 
 STORE = {"slug": "trinity", "name": "Trinity Hobby", "base_url": "https://trinityhobby.com"}
@@ -77,6 +78,7 @@ def count_problem(seen: int, total: int | None, tolerance: float) -> str | None:
 class TrinitySpider(scrapy.Spider):
     name = "trinity"
     store = STORE
+    adapter = staticmethod(parser.parse_item)  # raw USF item -> CardRec
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

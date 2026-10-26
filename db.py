@@ -98,7 +98,8 @@ def save_items(conn, store_id, run_id, pairs):
         with cur.copy("COPY stage_listings (source_product_id, card_key, url_name, title_raw, problems, raw)"
                       " FROM STDIN") as cp:
             for rec, raw in latest.values():
-                cp.write_row((rec.product_id, rec.card_key, rec.url_name, raw["title"], rec.problems, Jsonb(raw)))
+                cp.write_row((rec.product_id, rec.card_key, rec.url_name, rec.title or raw.get("title", ""),
+                              rec.problems, Jsonb(raw)))
         with cur.copy("COPY stage_variants (source_product_id, source_variant_id, sku, condition, edition, price,"
                       " quantity, in_stock) FROM STDIN") as cp:
             for rec, _ in latest.values():

@@ -1,7 +1,14 @@
 # tcg-tracker
 
 Tracks Yu-Gi-Oh! single-card prices and stock at Canadian online stores, with price history.
-Currently one store: **Trinity Hobby** (trinityhobby.com, ~11,800 in-stock singles, prices in CAD).
+Stores (prices in CAD, in-stock Yu-Gi-Oh singles only):
+
+| Store | Spider | Data source | Size (2026-10-26) |
+|---|---|---|---|
+| **Trinity Hobby** (trinityhobby.com) | `trinity` | Hotyon "USF" search API | ~11,800 listings, 59 requests |
+| **401 Games** (store.401games.ca, Toronto) | `401games` | Fast Simon search API | ~35,000 listings, 141 requests |
+
+About 9,000 cards are carried by both stores and line up on the same `card_key`.
 
 Built with Scrapy and PostgreSQL. Priorities: reliable data, loud failures, tests on real data.
 
@@ -72,15 +79,15 @@ it can post to that channel.
 ## Architecture
 
 ```
- trinityhobby.com collection page ──(only when needed)──► API key
-                                                             │
- Hotyon "USF" search API ◄── 59 GETs, 200 items each ────────┘
+ store collection page ──(only when needed)──► API key / config (cached in store_config)
+                                                   │
+ store's search API ◄── pages of 200–250 ─────────┘     (Hotyon USF for Trinity, Fast Simon for 401 Games)
           │
           ▼
- tcg_tracker/spiders/trinity.py   paging, completeness checks, run verdict
+ tcg_tracker/spiders/<store>.py   paging, completeness checks, run verdict
           │  raw items
           ▼
- tcg_tracker/pipelines.py         parser.parse_item -> db.save_items in batches of 500
+ tcg_tracker/pipelines.py         spider.adapter(raw) -> CardRec -> db.save_items in batches of 500
           │                        start_run / finish_run bookkeeping
           ▼
  PostgreSQL                        stores, cards, listings, variants, price_history, scrape_runs
@@ -91,8 +98,9 @@ it can post to that channel.
 
 | Path | What it does |
 |---|---|
-| `tcg_tracker/spiders/trinity.py` | Gets the API key (cached), pages the API until `skip >= data.total`, decides if the crawl is complete |
-| `parser.py` | Turns one raw store item into a `CardRec` (card identity) with `VariantRec`s (condition, edition, price, quantity) |
+| `tcg_tracker/spiders/trinity.py`, `games401.py` | Get the API config (cached), page the API to the end, decide if the crawl is complete |
+| `parser.py` | Shared card identity (`CardRec`, `VariantRec`, `make_card_key`, art labels, grading) and Trinity's adapter |
+| `adapter_401.py` | 401 Games' adapter: one Fast Simon item -> `CardRec` using the shared rules |
 | `db.py` | Batched upserts (COPY into staging tables + set-based SQL), price history, closing a run |
 | `tcg_tracker/pipelines.py` | Glue: parse, save in transactions of 500, finish the run, tell the monitor |
 | `tcg_tracker/monitoring.py` | Checks every run and sends alerts |
@@ -197,12 +205,13 @@ Alerts always go to the log and to `scrape_runs.alerts`. Set `ALERT_DISCORD_WEBH
 ## Tests
 
 ```bash
-pytest                    # 122 tests, about a minute
+pytest                    # 156 tests, about 6 minutes (end-to-end crawls)
 ruff check .
 ```
 
-- `tests/trinity_yugioh_usf.json.gz` is a real full crawl (11,793 items) stored gzipped (2.3 MB instead of 23 MB).
-  Parser and adapter tests run on it.
+- Real full crawls, stored gzipped: `tests/trinity_yugioh_usf.json.gz` (11,793 items, 2.3 MB) and
+  `tests/games401_fastsimon.json.gz` (35,027 items, 6.3 MB, untouched API output). Adapter tests run on them,
+  including a check that both stores' keys line up.
 - `test_e2e_spider.py` runs real `scrapy crawl` processes against `tests/mock_site.py`, which serves the saved crawl
   as API pages: no network.
 - Database tests need `TEST_DATABASE_URL` pointing at a database whose name ends in `_test` (its schema is wiped);
@@ -213,22 +222,31 @@ ruff check .
 
 Ask first (see `CLAUDE.md`): each store is a commitment to keep its scraper working.
 
-1. **Find the data source.** Prefer a structured API the site itself uses (search widget, JSON endpoints) over
-   HTML. Check robots.txt, terms and any `agents.md`. Count the items and confirm a full crawl is reachable.
-2. **Save a real crawl** as a gzipped fixture in `tests/` before writing the parser.
-3. **Write the adapter**: a function `raw item -> CardRec` for that store's format, in its own module. Reuse the
-   shared card-identity rules: the `card_key` format, `_slug`, the rarity vocabulary, quarantine instead of guessing.
-   The adapter must produce the same `card_key` as Trinity for the same physical card; test that on cards both
-   stores carry.
-4. **Write the spider** in `tcg_tracker/spiders/<slug>.py` with a `store` dict (`slug`, `name`, `base_url`) and a
-   `verdict(close_reason)` method saying whether the crawl was complete, like `trinity.py`.
-5. **Pipeline:** `pipelines.py` currently calls `parser.parse_item` (Trinity's adapter) directly. A second store
-   needs the pipeline to take the adapter from the spider. That change belongs with the second store.
-6. **Tests:** adapter tests on real items, an end-to-end test with a mock of the site, monitoring baselines.
+401 Games was added this way; `adapter_401.py` and `tcg_tracker/spiders/games401.py` are the template.
+
+1. **Permission and rules.** Shopify stores' terms forbid scraping without written permission: have it first. Then
+   check robots.txt and `agents.md`. See `docs/second-store-research.md` for how candidates were compared.
+2. **Find the data source.** Prefer a structured API the site itself uses (search widget, JSON endpoints) over
+   HTML. Count the items and confirm a full crawl is reachable (Shopify's `products.json` stops at 25,000).
+3. **Save a real crawl** as a gzipped fixture in `tests/` before writing the adapter.
+4. **Write the adapter** (`adapter_<store>.py`): `raw item -> CardRec`. Use the shared rules from `parser.py`
+   (`make_card_key`, `art_label_from`, `GRADE_RE`, `_is_rarity_text`, `RARITY_ABBR`); quarantine instead of guessing;
+   put the edition on each variant; fill `CardRec.title`. Measure how many keys line up with the other stores.
+5. **Write the spider** in `tcg_tracker/spiders/<slug>.py` with `store` (`slug`, `name`, `base_url`), `adapter`
+   (the function above) and `verdict(close_reason)`. Report where its config came from as `<slug>/config_source`
+   so monitoring alerts on fallbacks.
+6. **Tests:** adapter tests on real items, spider tests, and the mock site + end-to-end tests in
+   `tests/mock_site.py` / `tests/test_e2e_spider.py`.
+7. **Schedule it:** add the spider name to `SPIDERS` in `scripts/scheduled.py`.
 
 ## Known limitations
 
-- **One store.** The pipeline is wired to Trinity's parser (see *Adding a store*).
+- **401 Games has no stock counts**, only "sellable" yes/no, so `quantity` is NULL for its variants.
+- **401's "PLD" grade** is stored as its own condition `PL` (played): it has no published definition that maps to
+  LP or MP, so best prices never compare it with those.
+- **Edition unknown for some 401 products** (~1,560 listings, e.g. Dark Beginning / Dark Revelation, whose titles
+  print no edition). They keep their card key but don't line up with another store's edition-specific offers.
+- **A 401 crawl takes ~25 minutes** (Fast Simon answers slowly, 5–15 s per page at times); Trinity takes ~1 minute.
 - **History is per run.** Changes between two crawls are seen as one change; sell-outs and restocks between runs are
   invisible.
 - **Stock is inferred from absence.** The API hides out-of-stock cards, so "out of stock" means "missing from a
@@ -246,4 +264,3 @@ Ask first (see `CLAUDE.md`): each store is a commitment to keep its scraper work
   it again and falls back to the cached key if it's still blocked.
 - **Everything runs on one PC.** Crawls, the freshness check and alerts only happen while it's on (missed times run
   when it's back). If the PC is off for days, nothing can tell you; the freshness check alerts once it's back on.
-- **CI hasn't run on GitHub yet** (no remote); it was verified locally on Python 3.12 and 3.14.

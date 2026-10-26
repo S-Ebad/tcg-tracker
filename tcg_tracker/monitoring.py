@@ -112,13 +112,14 @@ def evaluate(run: dict | None, prev_ok: dict | None, stats: dict, t: dict) -> li
                             f"{errors}/{attempts} downloads failed ({rate:.1%}), limit {t['max_http_error_rate']:.0%}"))
     if stats.get("tcg/parse_exceptions"):
         alerts.append(Alert("critical", "parser_crash", f"parse_item raised on {stats['tcg/parse_exceptions']} items"))
-    source = stats.get("trinity/api_key_source")
+    # each spider reports where its API key/config came from as "<store>/api_key_source" or "<store>/config_source"
+    source = next((v for k, v in stats.items() if k.endswith(("/api_key_source", "/config_source"))), None)
     if source == "fallback":
         alerts.append(Alert("warning", "api_key_fallback",
                             "the hardcoded API key was used: the store page could not be read and nothing was cached"))
     elif source == "cached_stale":
         alerts.append(Alert("warning", "api_key_stale", "the store page could not be read; an old cached key was used"))
-    if stats.get("trinity/api_key_rejected"):
+    if any(v for k, v in stats.items() if k.endswith(("/api_key_rejected", "/config_rejected"))):
         alerts.append(Alert("warning", "api_key_rejected", "the API rejected the cached key; it was re-discovered"))
     return alerts
 

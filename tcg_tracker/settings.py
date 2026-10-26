@@ -58,6 +58,14 @@ SMTP_USER = os.environ.get("SMTP_USER", "")
 SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
 SMTP_STARTTLS = os.environ.get("SMTP_STARTTLS", "1") != "0"
 
+# 401 Games (Fast Simon). Config is discovered from the collection page and cached in store_config; this public
+# frontend config is only a last-resort fallback and using it logs a loud warning.
+GAMES401_FALLBACK_CONFIG = {"uuid": "d3cae9c0-9d9b-4fe3-ad81-873270df14b5", "store_id": "17041809",
+                            "category_id": "281082495163"}
+GAMES401_CONFIG_MAX_AGE_DAYS = 7
+GAMES401_MAX_PAGES = 300
+GAMES401_COUNT_TOLERANCE = 0.005
+
 TWISTED_REACTOR = "twisted.internet.asyncioreactor.AsyncioSelectorReactor"
 FEED_EXPORT_ENCODING = "utf-8"
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")

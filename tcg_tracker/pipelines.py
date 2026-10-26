@@ -7,7 +7,6 @@ import psycopg
 from scrapy import signals
 
 import db
-from parser import parse_item
 from tcg_tracker.monitoring import FieldStats, run_finished
 
 logger = logging.getLogger(__name__)
@@ -39,6 +38,8 @@ class PostgresPipeline:
             raise RuntimeError("DATABASE_URL is not set")
         self.conn = psycopg.connect(self.database_url, autocommit=True)
         s = self.crawler.spider.store
+        # each spider brings its store's adapter: raw item -> parser.CardRec (shared card identity)
+        self.adapter = self.crawler.spider.adapter
         self.store_id = db.ensure_store(self.conn, s["slug"], s["name"], s["base_url"])
         self.run_id = db.start_run(self.conn, self.store_id)
         logger.info("scrape run %s started for store %s", self.run_id, s["slug"])
@@ -48,10 +49,10 @@ class PostgresPipeline:
             return item
         raw = item["raw"]
         try:
-            rec = parse_item(raw)
+            rec = self.adapter(raw)
         except Exception:
             # a crash is a parser bug, not a data gap: count it loudly so monitoring sees it
-            logger.exception("parse_item crashed on product %s", raw.get("id"))
+            logger.exception("adapter crashed on product %s", raw.get("id"))
             self.stats.inc_value("tcg/parse_exceptions")
             return item
         if rec.problems:

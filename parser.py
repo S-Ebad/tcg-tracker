@@ -1,4 +1,9 @@
-"""Parse raw Trinity Hobby (Hotyon USF) Yu-Gi-Oh items into clean records."""
+"""Card identity shared by all stores, and the Trinity Hobby (Hotyon USF) adapter.
+
+Shared (every store adapter must use these so the same card gets the same card_key): CardRec / VariantRec,
+make_card_key, art_label_from, _slug, _is_rarity_text, GRADE_RE, PAREN_RE.
+Trinity-specific: parse_item (raw USF item -> CardRec). Other stores live in their own adapter module.
+"""
 from __future__ import annotations
 
 import re
@@ -23,7 +28,9 @@ TAG_VALUE_PREFIXES = ("rarity_", "printing_")
 CODE_RE = re.compile(r"\[([A-Z0-9]{2,6})-(?:([A-Z]{2})([A-Z]*))?(\d{1,4}[A-Z]?)\]")
 RARITY_ABBR = {"UR": "Ultra Rare", "SR": "Super Rare", "SCR": "Secret Rare", "R": "Rare",
                "C": "Common", "CR": "Collector's Rare", "UTR": "Ultimate Rare", "GR": "Gold Rare",
-               "PS": "Platinum Secret Rare", "QCSR": "Quarter Century Secret Rare"}
+               "PS": "Platinum Secret Rare", "QCSR": "Quarter Century Secret Rare",
+               # seen at 401 Games: "Dominus Impulse (PCR) - RA05-EN080 - Prismatic Collector's Rare - 1st Edition"
+               "PCR": "Prismatic Collector's Rare", "PUR": "Prismatic Ultimate Rare", "EUR": "Emblazoned Ultra Rare"}
 PAREN_RE = re.compile(r"\(([^()]*)\)")
 # Graded slabs ("... Ultra Rare - PSA 7") are a different product from raw copies: quarantined, never keyed.
 GRADE_RE = re.compile(r"\b(PSA|BGS|CGC|SGC|Beckett)\s*(10|[1-9](?:\.5)?)\b")
@@ -39,10 +46,10 @@ def _is_rarity_text(s: str) -> bool:
 class VariantRec:
     variant_id: int
     sku: str | None
-    condition: str | None      # NM/LP/MP/HP/DMG or None if unrecognised
+    condition: str | None      # NM/LP/MP/PL/HP/DMG or None if unrecognised
     edition: str | None        # per variant: one listing can hold 1st Edition and Unlimited copies
     price: float
-    quantity: int              # raw "available"; -1 = untracked/unconfirmed, counted as in stock
+    quantity: int | None       # raw stock count (Trinity: -1 = unconfirmed); None when the store doesn't say
     in_stock: bool
 
 
@@ -60,6 +67,7 @@ class CardRec:
     card_key: str | None       # canonical cross-store key
     variants: list[VariantRec] = field(default_factory=list)
     problems: list[str] = field(default_factory=list)
+    title: str = ""            # the store's product title as received (listings.title_raw)
 
 
 def _split_condition(label: str):
@@ -118,6 +126,24 @@ def _slug(s: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", s.lower()).strip("-")
 
 
+def art_label_from(parens: list[str], rarity: str | None) -> str | None:
+    """Art / alt-version qualifier: title parentheticals that are not the rarity or a short form of it
+    ("(Ghost)" on a Ghost Rare, "(Duel Terminal)" on a Duel Terminal Technology Common, "(UR)")."""
+    rar_l = (rarity or "").lower()
+    art = [p for p in parens
+           if p.lower() != rar_l and not rar_l.startswith(p.lower() + " ")
+           and p not in RARITY_ABBR and "rare" not in p.lower()]
+    return "; ".join(art) or None
+
+
+def make_card_key(card_number: str | None, rarity: str | None, art_label: str | None) -> str | None:
+    """The cross-store identity, e.g. "DIFO-EN070|super-rare|base". None when it can't be built (quarantine).
+    Edition is not part of it: it lives on each variant."""
+    if not card_number or not rarity:
+        return None
+    return "|".join([card_number, _slug(rarity), _slug(art_label) if art_label else "base"])
+
+
 def parse_item(item: dict) -> CardRec:
     probs: list[str] = []
     title = item["title"]
@@ -143,13 +169,7 @@ def parse_item(item: dict) -> CardRec:
     graded = GRADE_RE.search(title)
     if graded:
         probs.append(f"graded:{graded.group(1)} {graded.group(2)}")
-    # art / alt-version qualifier: parentheticals that are not the rarity or a short form of it
-    # ("(Ghost)" on a Ghost Rare, "(Duel Terminal)" on a Duel Terminal Technology Common)
-    rar_l = (rarity or "").lower()
-    art = [p for p in parens
-           if p.lower() != rar_l and not rar_l.startswith(p.lower() + " ")
-           and p not in RARITY_ABBR and "rare" not in p.lower()]
-    art_label = "; ".join(art) or None
+    art_label = art_label_from(parens, rarity)
     tag_ed = next((t for t in tags if t in EDITIONS), None)
 
     opts = item.get("options") or []
@@ -186,9 +206,7 @@ def parse_item(item: dict) -> CardRec:
         probs.append("variants_dropped")
 
     # Edition is not part of the card: it lives on each variant (see VariantRec.edition).
-    key = None
-    if set_code and number and rarity and not graded:
-        key = "|".join([f"{set_code}-{lang}{number}", _slug(rarity), _slug(art_label) if art_label else "base"])
+    key = None if graded or not m else make_card_key(f"{set_code}-{lang}{number}", rarity, art_label)
     return CardRec(item["id"], item.get("urlName", ""), name, set_code, lang,
                    f"{set_code}-{lang}{number}" if m else None, set_name, rarity, art_label, key,
-                   variants, probs)
+                   variants, probs, title=title)

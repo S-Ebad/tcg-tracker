@@ -42,7 +42,7 @@ def old_db():
 def test_keys_rewritten_orphans_removed_and_view_per_edition(old_db):
     from migrate import migrate
 
-    assert migrate(old_db) == [5]
+    assert migrate(old_db, upto=5) == [5]
     q = old_db.execute
     assert q("SELECT card_key FROM cards ORDER BY 1").fetchall() == [("DIFO-EN070|super-rare|base",)]
     assert q("SELECT id, card_key FROM listings ORDER BY id").fetchall() == [

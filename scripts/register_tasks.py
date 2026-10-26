@@ -6,7 +6,8 @@
 Tasks (folder "tcg-tracker" in Task Scheduler), run as the current user, only while logged on, no admin needed:
   crawl            07:15 and 19:15  scripts/scheduled.py crawl            (crawl, then back up the database)
   check-freshness  12:30            scripts/scheduled.py check-freshness  (alert if no good crawl in 26 h)
-A time missed because the PC was off or asleep runs as soon as it's available again. Each run is limited to 1 hour.
+A time missed because the PC was off or asleep runs as soon as it's available again.
+Each run is limited to 2 hours (a 401 Games crawl alone can take ~30 min).
 """
 from __future__ import annotations
 
@@ -42,7 +43,7 @@ def task_xml(job: str, times: list[str], description: str, user: str) -> str:
     <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
     <StartWhenAvailable>true</StartWhenAvailable>
     <RunOnlyIfNetworkAvailable>true</RunOnlyIfNetworkAvailable>
-    <ExecutionTimeLimit>PT1H</ExecutionTimeLimit>
+    <ExecutionTimeLimit>PT2H</ExecutionTimeLimit>
     <Enabled>true</Enabled>
   </Settings>
   <Actions Context="Author"><Exec>
