@@ -1,7 +1,15 @@
 """Trinity Hobby Yu-Gi-Oh singles via the Hotyon "Ultimate Search & Filter" (USF) API.
 
-Flow: collection page (discover API key) -> /search pages of 200 with skip paging until skip >= data.total.
+Flow: API key -> /search pages of 200 with skip paging until skip >= data.total.
 The run is reported as failed (and nothing is marked out of stock) when the crawl is incomplete.
+
+API key, in order of preference:
+  1. cached in store_config and younger than TRINITY_API_KEY_MAX_AGE_DAYS: the store's site is not touched at all
+     (trinityhobby.com answers unregistered bots with 429; the USF API does not);
+  2. discovered from the collection page, then cached;
+  3. if the page can't be read: the cached key even if old (warning);
+  4. last resort: TRINITY_FALLBACK_API_KEY (error).
+If the API rejects the key (HTTP 400 "Missing or invalid ApiKey.") before any item was read, the page is read once more.
 """
 from __future__ import annotations
 
@@ -11,6 +19,9 @@ from urllib.parse import urlencode
 
 import scrapy
 from scrapy.exceptions import CloseSpider
+from scrapy.spidermiddlewares.httperror import HttpError
+
+from tcg_tracker.config_cache import StoreConfigCache
 
 STORE = {"slug": "trinity", "name": "Trinity Hobby", "base_url": "https://trinityhobby.com"}
 COLLECTION_URL = "https://trinityhobby.com/collections/singles/yugioh"
@@ -19,6 +30,7 @@ COLLECTION_TAG = "yugioh"
 DEFAULT_SEARCH_URL = "https://svc-2-usf.hotyon.com/"
 DEFAULT_COLLECTION_ID = "368535077111"
 PAGE_SIZE = 200  # API maximum
+CONFIG_KEY = "usf"  # store_config key holding {"api_key", "search_url", "collection_id"}
 
 # The key is not in usf-boot.js: that script reads it from the inline `window.usf = { settings: {...} }` (siteId).
 USF_SETTINGS_RE = re.compile(r"window\.usf\s*=\s*\{\s*settings\s*:\s*")
@@ -72,6 +84,15 @@ class TrinitySpider(scrapy.Spider):
         self.total: int | None = None
         self.pages = 0
         self.failure: str | None = None
+        self.cache = None            # StoreConfigCache, set in from_crawler
+        self.stale: dict | None = None   # cached config too old to use first, kept as a fallback
+        self.rejected_keys: set[str] = set()
+
+    @classmethod
+    def from_crawler(cls, crawler, *args, **kwargs):
+        spider = super().from_crawler(crawler, *args, **kwargs)
+        spider.cache = StoreConfigCache(crawler.settings.get("DATABASE_URL", ""), STORE)
+        return spider
 
     @property
     def _settings(self):
@@ -80,12 +101,31 @@ class TrinitySpider(scrapy.Spider):
     async def start(self):
         if not self._settings.get("CONTACT_EMAIL"):
             raise CloseSpider("TCG_CONTACT_EMAIL is not set; the User-Agent must carry a contact address")
-        yield scrapy.Request(COLLECTION_URL, callback=self.parse_collection, errback=self.collection_failed)
+        for request in self._initial_requests():
+            yield request
 
-    # --- API key discovery -------------------------------------------------------------------------------------
+    # --- API key: cache, discovery, fallbacks ------------------------------------------------------------------
+    def _initial_requests(self):
+        cached = self.cache.load(CONFIG_KEY) if self.cache else None
+        max_age = self._settings.getfloat("TRINITY_API_KEY_MAX_AGE_DAYS", 7) * 86400
+        if cached and cached[0].get("api_key"):
+            cfg, age = cached
+            if age < max_age:
+                self.logger.info("using cached USF config (%.1f days old); not fetching the store page", age / 86400)
+                yield from self._begin(cfg["api_key"], cfg.get("search_url"), cfg.get("collection_id"), "cached")
+                return
+            self.stale = cfg
+        yield self._collection_request()
+
+    def _collection_request(self) -> scrapy.Request:
+        return scrapy.Request(COLLECTION_URL, callback=self.parse_collection, errback=self.collection_failed,
+                              dont_filter=True)
+
     def parse_collection(self, response):
         cfg = extract_usf_config(response.text)
         if cfg:
+            if self.cache:
+                self.cache.save(CONFIG_KEY, cfg)
             yield from self._begin(cfg["api_key"], cfg["search_url"], cfg["collection_id"], source="discovered")
         else:
             yield from self._fallback(f"USF config not found in {response.url}")
@@ -94,10 +134,17 @@ class TrinitySpider(scrapy.Spider):
         yield from self._fallback(f"collection page failed: {failure.value!r}")
 
     def _fallback(self, why: str):
+        if self.stale:
+            self.logger.warning("%s. Using the cached USF config even though it is older than the limit.", why)
+            cfg, self.stale = self.stale, None
+            yield from self._begin(cfg["api_key"], cfg.get("search_url"), cfg.get("collection_id"), "cached_stale")
+            return
         self.logger.error("!!! %s. Using the hardcoded fallback API key; check the page and update the spider.", why)
         yield from self._begin(self._settings.get("TRINITY_FALLBACK_API_KEY"), None, None, source="fallback")
 
     def _begin(self, api_key, search_url, collection_id, source):
+        if api_key in self.rejected_keys:
+            self._fail(f"API key from {source} was already rejected by the API and no other key is available")
         if source == "discovered" and api_key != self._settings.get("TRINITY_FALLBACK_API_KEY"):
             self.logger.warning("USF API key changed from the configured fallback; update TRINITY_FALLBACK_API_KEY")
         self.crawler.stats.set_value("trinity/api_key_source", source)
@@ -149,6 +196,15 @@ class TrinitySpider(scrapy.Spider):
                     self._fail(f"API now returns non-in-stock items (stockStatus labels {sorted(labels)})")
 
     def page_failed(self, failure):
+        response = getattr(failure.value, "response", None) if failure.check(HttpError) else None
+        if response is not None and response.status == 400 and b"ApiKey" in response.body and self.pages == 0:
+            # stale cached (or fallback) key: read the page once more instead of failing the run
+            self.rejected_keys.add(self.api_key)
+            self.stale = None
+            self.crawler.stats.inc_value("trinity/api_key_rejected")
+            self.logger.warning("USF API rejected the key (HTTP 400); re-reading the collection page")
+            yield self._collection_request()
+            return
         self._fail(f"page request failed after retries: {failure.request.url} {failure.value!r}")
 
     def _fail(self, reason: str):

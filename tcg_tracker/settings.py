@@ -35,6 +35,9 @@ DB_BATCH_SIZE = 500
 # Trinity Hobby (Hotyon "Ultimate Search & Filter"). The API key is discovered from the collection page every run;
 # this public frontend key is only a last-resort fallback and using it logs a loud warning.
 TRINITY_FALLBACK_API_KEY = os.environ.get("TRINITY_FALLBACK_API_KEY", "04572457-312a-4a58-b5e9-6aff246ee39f")
+# The discovered key is cached in store_config; the store page (which rate-limits bots) is re-read only after this
+# many days, or immediately if the API rejects the cached key.
+TRINITY_API_KEY_MAX_AGE_DAYS = 7
 TRINITY_MAX_PAGES = 100
 TRINITY_COUNT_TOLERANCE = 0.005  # fail the run if the item count is off data.total by more than 0.5%
 

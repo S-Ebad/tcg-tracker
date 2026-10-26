@@ -59,6 +59,21 @@ def ensure_store(conn, slug, name, base_url):
         (slug, name, base_url)).fetchone()[0]
 
 
+def get_store_config(conn, store_id, key):
+    """(value, age in seconds) for a cached store setting, or None."""
+    row = conn.execute(
+        """SELECT value, extract(epoch FROM now() - updated_at) FROM store_config
+           WHERE store_id=%s AND key=%s""", (store_id, key)).fetchone()
+    return (row[0], float(row[1])) if row else None
+
+
+def set_store_config(conn, store_id, key, value):
+    conn.execute(
+        """INSERT INTO store_config (store_id, key, value) VALUES (%s,%s,%s)
+           ON CONFLICT (store_id, key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()""",
+        (store_id, key, Jsonb(value)))
+
+
 def start_run(conn, store_id):
     return conn.execute("INSERT INTO scrape_runs (store_id) VALUES (%s) RETURNING id", (store_id,)).fetchone()[0]
 

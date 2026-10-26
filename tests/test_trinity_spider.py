@@ -20,10 +20,27 @@ SETTINGS = {"CONTACT_EMAIL": "test@example.com", "TRINITY_FALLBACK_API_KEY": "fa
             "TRINITY_MAX_PAGES": 100, "TRINITY_COUNT_TOLERANCE": 0.005}
 
 
+class FakeCache:
+    def __init__(self, value=None, age_days=0.0):
+        self.stored = (value, age_days * 86400) if value else None
+        self.saved = []
+
+    def load(self, key):
+        return self.stored
+
+    def save(self, key, value):
+        self.saved.append((key, value))
+
+
+CACHED = {"api_key": "cached-key", "search_url": "https://svc-2-usf.hotyon.com/", "collection_id": "368535077111"}
+
+
 @pytest.fixture
 def spider():
     crawler = get_crawler(TrinitySpider, SETTINGS)
-    return TrinitySpider.from_crawler(crawler)
+    s = TrinitySpider.from_crawler(crawler)
+    s.cache = FakeCache()
+    return s
 
 
 def collection_response(body: str) -> HtmlResponse:
@@ -65,6 +82,78 @@ def test_fallback_key_is_used_loudly_when_page_has_no_config(spider, caplog):
     assert "apiKey=fallback-key" in out[0].url
     assert spider.crawler.stats.get_value("trinity/api_key_source") == "fallback"
     assert any(r.levelname == "ERROR" and "fallback" in r.getMessage() for r in caplog.records)
+
+
+# --- cached API key ---------------------------------------------------------------------------------------------
+
+def rejected(request):
+    from scrapy.spidermiddlewares.httperror import HttpError
+    from twisted.python.failure import Failure
+
+    resp = TextResponse(request.url, status=400, request=request,
+                        body=b'{"meta":{"status":400,"description":"Missing or invalid ApiKey."}}')
+    f = Failure(HttpError(resp, "Ignoring non-200 response"))
+    f.request = request
+    return f
+
+
+def test_fresh_cached_key_skips_the_store_page(spider):
+    spider.cache = FakeCache(CACHED, age_days=2)
+    out = list(spider._initial_requests())
+    assert len(out) == 1 and "apiKey=cached-key" in out[0].url and "trinityhobby.com" not in out[0].url
+    assert spider.crawler.stats.get_value("trinity/api_key_source") == "cached"
+
+
+def test_no_cache_reads_the_page_and_saves_what_it_found(spider):
+    out = list(spider._initial_requests())
+    assert out[0].url == COLLECTION_URL
+    list(spider.parse_collection(collection_response((DATA / "trinity_collection_page.html").read_text("utf-8"))))
+    assert spider.cache.saved == [("usf", {"api_key": "04572457-312a-4a58-b5e9-6aff246ee39f",
+                                           "search_url": "https://svc-2-usf.hotyon.com/",
+                                           "collection_id": "368535077111"})]
+
+
+def test_old_cache_reads_the_page_first(spider):
+    spider.cache = FakeCache(CACHED, age_days=8)
+    assert list(spider._initial_requests())[0].url == COLLECTION_URL
+
+
+def test_old_cache_is_used_when_the_page_is_rate_limited(spider, caplog):
+    spider.cache = FakeCache(CACHED, age_days=30)
+    list(spider._initial_requests())
+    out = list(spider._fallback("collection page failed: 429"))
+    assert "apiKey=cached-key" in out[0].url
+    assert spider.crawler.stats.get_value("trinity/api_key_source") == "cached_stale"
+    assert not any(r.levelname == "ERROR" for r in caplog.records)
+
+
+def test_rejected_cached_key_rereads_the_page_once(spider):
+    spider.cache = FakeCache(CACHED, age_days=1)
+    first = list(spider._initial_requests())[0]
+    out = list(first.errback(rejected(first)))
+    assert out[0].url == COLLECTION_URL
+    assert spider.crawler.stats.get_value("trinity/api_key_rejected") == 1
+    # page gives a new key -> crawl continues with it
+    nxt = list(spider.parse_collection(collection_response((DATA / "trinity_collection_page.html").read_text("utf-8"))))
+    assert "apiKey=04572457" in nxt[0].url
+
+
+def test_rejected_key_rediscovered_unchanged_fails_the_run(spider):
+    spider.cache = FakeCache({**CACHED, "api_key": "04572457-312a-4a58-b5e9-6aff246ee39f"}, age_days=1)
+    first = list(spider._initial_requests())[0]
+    list(first.errback(rejected(first)))
+    with pytest.raises(CloseSpider):
+        list(spider.parse_collection(collection_response((DATA / "trinity_collection_page.html").read_text("utf-8"))))
+    assert "already rejected" in spider.verdict("failed")
+
+
+def test_key_rejected_mid_crawl_fails_instead_of_restarting(spider):
+    spider.cache = FakeCache(CACHED, age_days=1)
+    first = list(spider._initial_requests())[0]
+    run_page(spider, first, api_response(first, items(0, 200), 1000))
+    second = spider.page_request(200)
+    with pytest.raises(CloseSpider):
+        list(second.errback(rejected(second)))
 
 
 # --- paging -----------------------------------------------------------------------------------------------------

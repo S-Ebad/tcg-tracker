@@ -151,6 +151,14 @@ def test_quarantined_listing_is_stored_without_card(conn, store):
     assert conn.execute("SELECT count(*) FROM cards").fetchone() == (0,)
 
 
+def test_store_config_round_trip_and_age(conn, store):
+    assert db.get_store_config(conn, store, "usf") is None
+    db.set_store_config(conn, store, "usf", {"api_key": "a"})
+    db.set_store_config(conn, store, "usf", {"api_key": "b"})
+    value, age = db.get_store_config(conn, store, "usf")
+    assert value == {"api_key": "b"} and 0 <= age < 60
+
+
 def test_real_crawl_loads_with_expected_counts(conn, store, real_crawl):
     run = db.start_run(conn, store)
     pairs = [(parse_item(r), r) for r in real_crawl]
