@@ -26,3 +26,6 @@ tests/*.json
 # Editors
 .idea/
 .vscode/
+
+# API image cache (api/images.py)
+.cache/

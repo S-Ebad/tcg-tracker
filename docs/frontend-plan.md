@@ -127,7 +127,7 @@ updated" need no schema change: `stores.base_url + '/products/' + listings.url_n
 
 1. This plan (review)
 2. Data work above, with tests
-3. API with tests (against the test database), browsable at `/docs`
+3. API with tests (against the test database), browsable at `/docs` — done 2026-10-26 (`api/`, 13 tests)
 4. Next.js app: layout + header/footer -> home -> search -> set page -> card page -> deals -> stores
 5. Docker (Postgres, crawlers + schedule, API, website) and hosting
 

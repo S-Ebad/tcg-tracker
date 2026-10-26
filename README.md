@@ -41,6 +41,29 @@ A crawl needs `TCG_CONTACT_EMAIL`: it goes in the User-Agent so the site owner c
 run end to end yet; the current database was set up by hand). The server isn't a Windows service: start it again
 after a reboot.
 
+### API (for the website)
+
+A read-only FastAPI service in `api/` serves the data the front end needs (see `docs/frontend-plan.md`):
+
+```bash
+uvicorn api.main:app --reload --port 8000
+```
+
+Then open http://localhost:8000/docs to try every endpoint in the browser:
+
+| Endpoint | Returns |
+|---|---|
+| `GET /api/search?q=dark magician&sort=best\|price\|stores\|name` | printings matching a name or card number, with cheapest in-stock price and store count |
+| `GET /api/cards/{card_key}` | a card with every store's offers (edition, condition, price, link to the store), other printings |
+| `GET /api/cards/{card_key}/history?edition=&condition=` | price history per store |
+| `GET /api/sets`, `GET /api/sets/{code}` | sets with cards in stock (A–Z); a set's printings in card-number order |
+| `GET /api/deals?condition=NM&min_price=5&sort=amount\|percent` | biggest savings for the same card, edition and condition |
+| `GET /api/stores` | stores and when each was last updated |
+| `GET /images/{card_key}` | the card's image: downloaded once from the store's CDN, then served from `.cache/images` |
+
+Search ignores punctuation ("maxx c" finds `Maxx "C"`). The website's origin must be listed in `API_CORS_ORIGINS`
+(default `http://localhost:3000`). Images are only fetched from Shopify's CDN, at 480 px width, with a 5 MB cap.
+
 ### Scheduled runs, backups and alerts
 
 `scripts/scheduled.py` is what the scheduler runs:
@@ -213,7 +236,7 @@ Alerts always go to the log and to `scrape_runs.alerts`. Set `ALERT_DISCORD_WEBH
 ## Tests
 
 ```bash
-pytest                    # 181 tests, about 10 minutes (end-to-end crawls of three stores)
+pytest                    # 194 tests, about 11 minutes (end-to-end crawls of three stores)
 ruff check .
 ```
 
