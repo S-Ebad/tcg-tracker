@@ -16,7 +16,15 @@ def test_basic_card():
                         ["Near Mint 1st Edition", "Lightly Played 1st Edition"], [(3, 0.6), (0, 0.5)]))
     assert (r.set_code, r.card_number, r.rarity, r.set_name) == ("DIFO", "DIFO-EN070", "Super Rare", "Dimension Force")
     assert [(v.condition, v.edition, v.in_stock) for v in r.variants] == [("NM", "1st Edition", True), ("LP", "1st Edition", False)]
-    assert r.card_key == "DIFO-EN070|super-rare|1st-edition|base" and not r.problems
+    assert r.card_key == "DIFO-EN070|super-rare|base" and not r.problems
+
+
+def test_mixed_edition_listing_gets_one_key_and_per_variant_editions():
+    r = parse_item(item("X [AAAA-EN001] Rare", ["Rare", "YGO_S", "1st Edition"],
+                        ["Near Mint 1st Edition", "Near Mint Unlimited", "Near Mint"], [(1, 2.0), (1, 1.0), (1, 1.5)]))
+    assert r.card_key == "AAAA-EN001|rare|base"
+    # label edition wins; a plain label falls back to the listing's edition tag
+    assert [v.edition for v in r.variants] == ["1st Edition", "Unlimited", "1st Edition"]
 
 
 def test_letter_suffix_and_special_prefix_codes():

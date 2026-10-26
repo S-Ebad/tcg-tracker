@@ -26,7 +26,7 @@ def test_condition_option_layout_with_edition_in_title(by_id):
     # ~2,300 items: option name "Condition", plain values ("Near Mint"); edition comes from the tags
     r = parsed(by_id, 9985940619511)  # Dominus Impulse (Starlight Rare) [BLGG-EN146] - ... 1st Edition - Starlight Rare
     assert by_id[9985940619511]["options"][0]["name"] == "Condition"
-    assert r.card_key == "BLGG-EN146|starlight-rare|1st-edition|base" and r.name == "Dominus Impulse"
+    assert r.card_key == "BLGG-EN146|starlight-rare|base" and r.name == "Dominus Impulse"
     assert variants(r)[:2] == [("NM", "1st Edition", 1, True), ("LP", "1st Edition", 0, False)]
     assert r.set_name == "Battles of Legend: Glorious Gallery" and not r.problems
 
@@ -34,7 +34,7 @@ def test_condition_option_layout_with_edition_in_title(by_id):
 def test_title_option_layout_condition_plus_edition(by_id):
     r = parsed(by_id, 7940843929847)  # Blue-Eyes White Dragon [GLD5-EN001] Ghost/Gold Rare
     assert by_id[7940843929847]["options"][0]["name"] == "Title"
-    assert r.card_key == "GLD5-EN001|ghost-gold-rare|limited|base"
+    assert r.card_key == "GLD5-EN001|ghost-gold-rare|base"
     assert variants(r)[:3] == [("NM", "Limited", 0, False), ("LP", "Limited", 1, True), ("MP", "Limited", 0, False)]
     assert [v.condition for v in r.variants] == ["NM", "LP", "MP", "HP", "DMG"]
 
@@ -45,10 +45,10 @@ def test_rarity_from_title_abbreviation_when_tags_have_none(by_id):
 
 
 @pytest.mark.parametrize("pid,label,key", [
-    (7941167513847, "Green", "DL11-EN019|rare|unlimited|green"),
-    (10072597594359, "Extended Art", "MAMO-EN016|starlight-rare|1st-edition|extended-art"),
-    (7941424251127, "Redemption Replacement", "MDP2-EN006K|rare|unlimited|redemption-replacement"),
-    (9672516600055, "MISCENTERED", "RA04-EN048|quarter-century-secret-rare|1st-edition|miscentered"),
+    (7941167513847, "Green", "DL11-EN019|rare|green"),
+    (10072597594359, "Extended Art", "MAMO-EN016|starlight-rare|extended-art"),
+    (7941424251127, "Redemption Replacement", "MDP2-EN006K|rare|redemption-replacement"),
+    (9672516600055, "MISCENTERED", "RA04-EN048|quarter-century-secret-rare|miscentered"),
 ])
 def test_art_and_version_labels_get_their_own_card_key(by_id, pid, label, key):
     r = parsed(by_id, pid)
@@ -80,13 +80,14 @@ def test_special_card_numbers(by_id, pid, number):
 def test_prefixed_tag_style_is_read_like_classic_tags(by_id):
     # tags "Rarity_Quarter Century Secret Rare" / "Printing_1st Edition" (one item on the 2026 crawl)
     r = parsed(by_id, 9672516600055)
-    assert (r.rarity, r.card_key.split("|")[2]) == ("Quarter Century Secret Rare", "1st-edition")
+    assert r.rarity == "Quarter Century Secret Rare"
+    assert {v.edition for v in r.variants} == {"1st Edition"}  # from "Printing_1st Edition"
 
 
 def test_duel_terminal_common_tag_is_a_rarity_and_its_parenthetical_is_not_art(by_id):
     r = parsed(by_id, 7941423431927)  # Waboku (Duel Terminal) [HAC1-EN026] Common, tag "Duel Terminal Technology Common"
     assert (r.rarity, r.art_label) == ("Duel Terminal Technology Common", None)
-    assert r.card_key == "HAC1-EN026|duel-terminal-technology-common|1st-edition|base" and not r.problems
+    assert r.card_key == "HAC1-EN026|duel-terminal-technology-common|base" and not r.problems
 
 
 @pytest.mark.parametrize("pid,rarity", [
@@ -103,8 +104,8 @@ def test_promo_is_not_a_rarity_and_stays_quarantined(by_id, real_crawl):
 
 
 @pytest.mark.parametrize("pid,key", [
-    (7941117509879, "TDGS-EN040|ghost-rare|unlimited|base"),           # Stardust Dragon (Ghost) ... Ghost Rare
-    (7940843929847, "GLD5-EN001|ghost-gold-rare|limited|base"),
+    (7941117509879, "TDGS-EN040|ghost-rare|base"),           # Stardust Dragon (Ghost) ... Ghost Rare
+    (7940843929847, "GLD5-EN001|ghost-gold-rare|base"),
 ])
 def test_rarity_short_form_in_parentheses_is_not_art(by_id, pid, key):
     r = parsed(by_id, pid)
@@ -119,7 +120,7 @@ def test_graded_slab_is_quarantined(by_id):
 
 def test_missing_set_name_tag_keeps_the_card_key(by_id):
     r = parsed(by_id, 9496937627895)  # Dark Magician [RP01-EN003] Ultra Rare, no YGO_ tag
-    assert r.set_name is None and r.card_key == "RP01-EN003|ultra-rare|unlimited|base"
+    assert r.set_name is None and r.card_key == "RP01-EN003|ultra-rare|base"
     assert r.problems == ["no_set_name"]
 
 
@@ -133,6 +134,19 @@ def test_variant_key_is_variant_id_even_when_sku_is_missing(by_id):
     r = parsed(by_id, 9985940619511)
     assert [v.sku is None for v in r.variants][:3] == [False, True, True]
     assert len({v.variant_id for v in r.variants}) == len(r.variants)
+
+
+def test_listing_with_both_editions_keeps_each_variant_edition_and_one_card_key(by_id):
+    r = parsed(by_id, 7941117509879)  # Stardust Dragon (Ghost) [TDGS-EN040] Ghost Rare: 1st Edition and Unlimited
+    assert r.card_key == "TDGS-EN040|ghost-rare|base"
+    assert {v.edition for v in r.variants} == {"1st Edition", "Unlimited"}
+
+
+def test_every_real_variant_has_an_edition(real_crawl):
+    editions = Counter(v.edition for r in real_crawl for v in parse_item(r).variants)
+    assert editions == {"1st Edition": 48375, "Unlimited": 12775, "Limited": 1560}
+    mixed = sum(1 for r in real_crawl if len({v.edition for v in parse_item(r).variants}) > 1)
+    assert mixed == 1954
 
 
 def test_real_crawl_problem_breakdown(real_crawl):

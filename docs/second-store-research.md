@@ -64,7 +64,7 @@ Edition; RA01 reprints exist in several rarities) — correctly different keys. 
 
 ## Recommendation
 
-1. **First, fix edition identity** (needed whatever store comes next): move edition out of `card_key` into the variant,
+1. **Done (migration 0005): fix edition identity** (needed whatever store comes next): move edition out of `card_key` into the variant,
    so a card is `code|rarity|art` and prices compare per (card, edition, condition). Needs a migration that re-keys
    cards and a decision on `current_best_prices`.
 2. **Then 401 Games**: biggest in-stock catalogue, a third-party JSON API like Trinity's, the cleanest titles, and

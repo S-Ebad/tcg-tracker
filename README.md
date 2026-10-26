@@ -104,11 +104,12 @@ it can post to that channel.
 - **cards**: one row per canonical card (see *Card identity*), shared by all stores.
 - **listings**: one store's product. Keeps the latest raw JSON (`raw`), so data can be re-parsed without
   re-fetching. `card_key` is NULL when the card couldn't be identified (quarantine); it is still tracked.
-- **variants**: condition × edition offers within a listing, with price, quantity and `in_stock`.
+- **variants**: condition × edition offers within a listing, with price, quantity and `in_stock`. The edition lives
+  here, not on the card: one listing can hold both 1st Edition and Unlimited copies.
 - **price_history**: a row only when price, quantity or stock changes (`source='seen'`), or when a variant
   disappears from a complete crawl and is marked out of stock (`source='missing'`).
 - **scrape_runs**: one row per crawl: status (`ok` / `suspect` / `failed`), counts, null rates per field, alerts.
-- **current_best_prices** (view): cheapest in-stock offer per card and condition across stores.
+- **current_best_prices** (view): cheapest in-stock offer per card, edition and condition across stores.
 
 ### Why runs can be "suspect" or "failed"
 
@@ -149,15 +150,19 @@ honours it after manually reviewing a registration, which a project like this is
 The same physical card is sold by many stores under different titles. `card_key` is the shared identity:
 
 ```
-DIFO-EN070|super-rare|1st-edition|base
-│          │          │           └ art / version label, or "base"
-│          │          └ edition: 1st-edition, unlimited, limited, or unknown
+DIFO-EN070|super-rare|base
+│          │          └ art / version label, or "base"
 │          └ rarity (slug)
 └ set code + language + number, as printed on the card
 ```
 
-Rarity, edition and art are part of the key because they change the price: a Starlight Rare and an Ultra Rare of the
-same card number are different products, and so are 1st Edition and Unlimited, and Extended Art and base art.
+Rarity and art are part of the key because they change the price: a Starlight Rare and an Ultra Rare of the same card
+number are different products, and so are Extended Art and base art.
+
+**Edition is not part of the key.** It's stored on each variant (`1st Edition`, `Unlimited`, `Limited`), and prices
+are compared per card, edition and condition. Some stores put both editions in one product (1,954 of Trinity's
+11,793 listings do), others list one product per edition (401 Games, Face to Face); both map onto the same card.
+(Migration 0005 moved edition out of `card_key`; keys were `CODE|rarity|edition|art` before.)
 
 Where each part comes from (Trinity):
 
@@ -167,7 +172,8 @@ Where each part comes from (Trinity):
   `Rarity_Quarter Century Secret Rare`), a title parenthetical (`(UR)`, `(Starlight Rare)`), then the text after the
   code (`[HAC1-EN026] Common`, `[PHRE-EN039] - Phantom Revenge 1st Edition - Ultra Rare`). Text that isn't a
   rarity (`Promo`) is not used.
-- **Edition**: an edition tag (`1st Edition`, `Printing_1st Edition`), else the variant's option label.
+- **Edition** (per variant): the variant's option label (`Near Mint 1st Edition`), else the listing's edition tag
+  (`1st Edition`, `Printing_1st Edition`).
 - **Art label**: other title parentheticals (`(Extended Art)`, `(Green)`, `(MISCENTERED)`). A parenthetical that
   restates the rarity, like `(Ghost)` on a Ghost Rare, is not an art label.
 
@@ -191,7 +197,7 @@ Alerts always go to the log and to `scrape_runs.alerts`. Set `ALERT_DISCORD_WEBH
 ## Tests
 
 ```bash
-pytest                    # 117 tests, about a minute
+pytest                    # 122 tests, about a minute
 ruff check .
 ```
 

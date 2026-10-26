@@ -30,15 +30,15 @@ def migration_files(directory: Path = MIGRATIONS_DIR) -> list[tuple[int, Path]]:
     return found
 
 
-def migrate(conn) -> list[int]:
-    """Apply pending migrations. Returns the versions applied."""
+def migrate(conn, upto: int | None = None) -> list[int]:
+    """Apply pending migrations (only up to version `upto`, if given). Returns the versions applied."""
     conn.execute("""CREATE TABLE IF NOT EXISTS schema_migrations (
                         version integer PRIMARY KEY, name text NOT NULL,
                         applied_at timestamptz NOT NULL DEFAULT now())""")
     done = {r[0] for r in conn.execute("SELECT version FROM schema_migrations")}
     applied = []
     for version, path in migration_files():
-        if version in done:
+        if version in done or (upto is not None and version > upto):
             continue
         with conn.transaction():
             conn.execute(path.read_text(encoding="utf-8"))

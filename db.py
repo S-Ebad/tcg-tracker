@@ -89,13 +89,12 @@ def save_items(conn, store_id, run_id, pairs):
     for rec, _ in latest.values():
         if rec.card_key:
             cards.setdefault(rec.card_key, (rec.card_key, rec.set_code, rec.card_number, rec.name, rec.set_name,
-                                            rec.rarity, next((v.edition for v in rec.variants if v.edition), None),
-                                            rec.art_label))
+                                            rec.rarity, rec.art_label))
     with conn.cursor() as cur:
         if cards:
             cur.executemany(
-                """INSERT INTO cards (card_key,set_code,card_number,name,set_name,rarity,edition,art_label)
-                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (card_key) DO NOTHING""", list(cards.values()))
+                """INSERT INTO cards (card_key,set_code,card_number,name,set_name,rarity,art_label)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (card_key) DO NOTHING""", list(cards.values()))
         with cur.copy("COPY stage_listings (source_product_id, card_key, url_name, title_raw, problems, raw)"
                       " FROM STDIN") as cp:
             for rec, raw in latest.values():

@@ -151,6 +151,19 @@ def test_quarantined_listing_is_stored_without_card(conn, store):
     assert conn.execute("SELECT count(*) FROM cards").fetchone() == (0,)
 
 
+def test_best_prices_are_per_card_edition_and_condition(conn, store):
+    mixed = raw(1, [(10, 1, 9.0), (11, 1, 2.0)])
+    mixed["options"][0]["values"] = ["Near Mint 1st Edition", "Near Mint Unlimited"]
+    other = raw(2, [(20, 1, 7.0)])  # same card from a second listing, 1st Edition, cheaper
+    other["urlName"] = "second-listing"
+    crawl(conn, store, [mixed, other])
+    rows = conn.execute("""SELECT card_key, edition, condition, price::float, url_name FROM current_best_prices
+                           ORDER BY edition""").fetchall()
+    assert rows == [("DIFO-EN070|super-rare|base", "1st Edition", "NM", 7.0, "second-listing"),
+                    ("DIFO-EN070|super-rare|base", "Unlimited", "NM", 2.0, "p1")]
+    assert conn.execute("SELECT count(*) FROM cards").fetchone() == (1,)
+
+
 def test_store_config_round_trip_and_age(conn, store):
     assert db.get_store_config(conn, store, "usf") is None
     db.set_store_config(conn, store, "usf", {"api_key": "a"})

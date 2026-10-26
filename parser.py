@@ -40,7 +40,7 @@ class VariantRec:
     variant_id: int
     sku: str | None
     condition: str | None      # NM/LP/MP/HP/DMG or None if unrecognised
-    edition: str | None
+    edition: str | None        # per variant: one listing can hold 1st Edition and Unlimited copies
     price: float
     quantity: int              # raw "available"; -1 = untracked/unconfirmed, counted as in stock
     in_stock: bool
@@ -179,16 +179,16 @@ def parse_item(item: dict) -> CardRec:
         # Below -1 would mean oversold: kept raw, out of stock, and flagged.
         if qty < -1:
             probs.append(f"negative_quantity:{qty}")
+        # the variant's own label wins over the listing's tag (1,954 Trinity listings mix editions)
         variants.append(VariantRec(v["id"], v.get("sku"), cond, ed or tag_ed,
                                    float(price), qty, qty > 0 or qty == -1))
     if len(variants) != len(item["variants"]):
         probs.append("variants_dropped")
 
-    ed_key = tag_ed or next((x.edition for x in variants if x.edition), None)
+    # Edition is not part of the card: it lives on each variant (see VariantRec.edition).
     key = None
     if set_code and number and rarity and not graded:
-        key = "|".join([f"{set_code}-{lang}{number}", _slug(rarity), _slug(ed_key or "unknown"),
-                         _slug(art_label) if art_label else "base"])
+        key = "|".join([f"{set_code}-{lang}{number}", _slug(rarity), _slug(art_label) if art_label else "base"])
     return CardRec(item["id"], item.get("urlName", ""), name, set_code, lang,
                    f"{set_code}-{lang}{number}" if m else None, set_name, rarity, art_label, key,
                    variants, probs)
