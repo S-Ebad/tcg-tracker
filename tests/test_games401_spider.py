@@ -140,6 +140,27 @@ def test_price_tie_duplicates_are_skipped_and_counted(spider):
     assert spider.crawler.stats.get_value("401games/duplicate_ids") == 2
 
 
+def test_page_from_a_disagreeing_index_copy_is_asked_again(spider):
+    req = list(spider._begin(CACHED, "cached"))[0]
+    run(req, api_response(req, items(0, 250), 35053, 141))  # page 1 sets the total
+    p2 = spider.page_request(2)
+    out = run(p2, api_response(p2, items(250, 250), 35012, 141))  # other copy: retried, nothing kept
+    assert [o.cb_kwargs for o in out] == [{"page": 2, "attempt": 2}] and not [o for o in out if isinstance(o, dict)]
+    retry = out[0]
+    out = run(retry, api_response(retry, items(250, 250), 35053, 141))  # same copy: kept, moves on to page 3
+    assert len([o for o in out if isinstance(o, dict)]) == 250
+    assert [o.cb_kwargs["page"] for o in out if isinstance(o, Request)] == [3]
+    assert spider.crawler.stats.get_value("401games/page_retries_inconsistent_total") == 1
+
+
+def test_a_lasting_change_in_total_is_accepted_after_three_tries(spider):
+    req = list(spider._begin(CACHED, "cached"))[0]
+    run(req, api_response(req, items(0, 250), 35053, 141))
+    p2 = spider.page_request(2, attempt=3)
+    out = run(p2, api_response(p2, items(250, 250), 35040, 141))
+    assert len([o for o in out if isinstance(o, dict)]) == 250 and spider.total == 35040
+
+
 def test_next_page():
     assert next_page(1, 250, 141, 300) == (2, "more")
     assert next_page(141, 58, 141, 300) == (None, "done")

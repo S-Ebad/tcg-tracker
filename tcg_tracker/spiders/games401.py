@@ -132,16 +132,16 @@ class Games401Spider(scrapy.Spider):
         yield self.page_request(1)
 
     # --- paging -----------------------------------------------------------------------------------------------
-    def page_request(self, page: int) -> scrapy.Request:
+    def page_request(self, page: int, attempt: int = 1) -> scrapy.Request:
         # in-stock singles only; price high->low gives a stable order for paging
         params = {"UUID": self.cfg["uuid"], "store_id": self.cfg["store_id"], "category_id": self.cfg["category_id"],
                   "api_type": "json", "facets_required": 0, "with_product_attributes": "true",
                   "products_per_page": PAGE_SIZE, "page_num": page, "sort_by": "price_max_to_min",
                   "narrow": json.dumps([["Isp-in-stock", "True"]])}
         return scrapy.Request(f"{API_URL}?{urlencode(params)}", callback=self.parse_page, errback=self.page_failed,
-                              cb_kwargs={"page": page}, dont_filter=True)
+                              cb_kwargs={"page": page, "attempt": attempt}, dont_filter=True)
 
-    def parse_page(self, response, page: int):
+    def parse_page(self, response, page: int, attempt: int = 1):
         try:
             data = response.json()
             items = data["items"]
@@ -157,10 +157,17 @@ class Games401Spider(scrapy.Spider):
                 yield self._collection_request()
                 return
             self._fail(f"API page {page} has no total_results")
-        self.pages += 1
         total, total_pages = int(data["total_results"]), int(data.get("total_p") or 0)
         if self.total is not None and total != self.total:
+            # Fast Simon answers from index copies that disagree (2026-10-26: total flipped 35,012 <-> 35,053 21 times
+            # in one crawl, giving 335 duplicates and 335 misses). Ask again for a page from the same copy as the
+            # rest; after MAX_PAGE_ATTEMPTS accept it as a real change in stock.
+            if attempt < self._settings.getint("GAMES401_PAGE_ATTEMPTS", 3):
+                self.crawler.stats.inc_value("401games/page_retries_inconsistent_total")
+                yield self.page_request(page, attempt + 1)
+                return
             self.logger.warning("total_results changed mid-crawl: %s -> %s", self.total, total)
+        self.pages += 1
         self.total = total
 
         for raw in items:
