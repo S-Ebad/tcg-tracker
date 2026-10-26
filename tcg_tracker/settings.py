@@ -66,6 +66,10 @@ GAMES401_CONFIG_MAX_AGE_DAYS = 7
 GAMES401_MAX_PAGES = 300
 GAMES401_COUNT_TOLERANCE = 0.005
 
+# Fusion Gaming (Shopify products.json; no API key)
+FUSION_MAX_PAGES = 100            # 56 pages of 250 on 2026-10-26
+FUSION_COUNT_TOLERANCE = 0.01     # products_count includes ~0.3% the feed doesn't list
+
 TWISTED_REACTOR = "twisted.internet.asyncioreactor.AsyncioSelectorReactor"
 FEED_EXPORT_ENCODING = "utf-8"
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")

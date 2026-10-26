@@ -1,5 +1,8 @@
 # Second store: research (2026-10-26)
 
+**Status:** 401 Games and Fusion Gaming were both added the same day (see README and CLAUDE.md for what the full
+crawls showed). Correction to the table below: Fusion's feed lists only products with at least one copy available.
+
 No code. About 40 polite requests in total: homepages, robots.txt, `agents.md`, Shopify `/collections.json`, and one or
 two data samples per store. Contact address in the User-Agent throughout.
 

@@ -20,11 +20,11 @@ MIDDLEWARES = {"mock_site.SavedSiteMiddleware": 1, "tcg_tracker.middlewares.Retr
 
 def crawl(tmp_path, scenario="ok", database_url="", extra=(), spider="trinity"):
     log, requests = tmp_path / f"{spider}-{scenario}.log", tmp_path / f"{spider}-{scenario}.requests"
-    env = os.environ | {
+    # never let a test crawl reach real alert channels: drop every ALERT_* / SMTP_* setting (incl. per-store webhooks)
+    env = {k: v for k, v in os.environ.items() if not k.upper().startswith(("ALERT_", "SMTP_"))} | {
         "PYTHONPATH": os.pathsep.join([str(ROOT / "tests"), str(ROOT)]),
         "TCG_CONTACT_EMAIL": "test@example.com", "DATABASE_URL": database_url,
         "MOCK_SCENARIO": scenario, "MOCK_REQUEST_LOG": str(requests),
-        "ALERT_DISCORD_WEBHOOK_URL": "", "ALERT_EMAIL_TO": "",
     }
     cmd = [sys.executable, "-m", "scrapy", "crawl", spider,
            "-s", f"DOWNLOADER_MIDDLEWARES={json.dumps(MIDDLEWARES)}",
@@ -33,6 +33,19 @@ def crawl(tmp_path, scenario="ok", database_url="", extra=(), spider="trinity"):
     text = log.read_text(encoding="utf-8") if log.exists() else proc.stderr
     urls = requests.read_text(encoding="utf-8").split() if requests.exists() else []
     return proc.returncode, text, urls
+
+
+def test_crawls_never_get_real_alert_settings(tmp_path, monkeypatch):
+    monkeypatch.setenv("ALERT_DISCORD_WEBHOOK_URL_401GAMES", "https://discord.test/should-not-be-used")
+    seen = {}
+
+    def fake_run(cmd, cwd, env, **kw):
+        seen.update(env)
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    crawl(tmp_path, spider="401games")
+    assert not [k for k in seen if k.upper().startswith(("ALERT_", "SMTP_"))]
 
 
 def test_full_crawl_to_feed_without_database(tmp_path):
@@ -167,3 +180,36 @@ def test_both_stores_share_card_keys(tmp_path, test_db):
     assert shared > 1000, f"only {shared} card keys appear at both stores"
     stores = {r[0] for r in query("SELECT DISTINCT store FROM current_best_prices")}
     assert stores == {"trinity", "401games"}
+
+
+# --- Fusion Gaming (Shopify products.json) -------------------------------------------------------------------------
+
+@needs_db
+def test_fusion_full_crawl_and_truncated_feed(tmp_path, test_db):
+    code, log, urls = crawl(tmp_path, database_url=test_db, spider="fusion",
+                            extra=("-s", "DOWNLOAD_DELAY=0"))
+    assert code == 0, log[-2000:]
+    status, seen, alerts = query("SELECT status, items_seen, alerts FROM scrape_runs")[0]
+    assert (status, seen, alerts) == ("ok", 13848, [])
+    assert query("SELECT count(*) FROM listings WHERE card_key IS NULL")[0][0] == 11
+    assert sum("products.json" in u for u in urls) == 57  # 56 pages with products + the empty one that ends it
+
+    bad = tmp_path / "bad"
+    bad.mkdir()
+    crawl(bad, scenario="truncated", database_url=test_db, spider="fusion", extra=("-s", "DOWNLOAD_DELAY=0"))
+    status, notes = query("SELECT status, notes FROM scrape_runs ORDER BY id DESC LIMIT 1")[0]
+    assert status == "failed" and "differs from data.total" in notes
+    assert query("SELECT count(*) FROM listings WHERE NOT in_stock") == [(0,)]
+
+
+@needs_db
+def test_three_stores_line_up(tmp_path, test_db):
+    for spider in ("trinity", "401games", "fusion"):
+        d = tmp_path / spider
+        d.mkdir()
+        code, log, _ = crawl(d, database_url=test_db, spider=spider)
+        assert code == 0, log[-2000:]
+    at_all_three = query("""SELECT count(*) FROM (SELECT l.card_key FROM listings l JOIN stores s ON s.id = l.store_id
+                            WHERE l.card_key IS NOT NULL GROUP BY l.card_key HAVING count(DISTINCT s.slug) = 3) x""")
+    assert at_all_three[0][0] == 3723
+    assert {r[0] for r in query("SELECT DISTINCT store FROM current_best_prices")} == {"trinity", "401games", "fusion"}

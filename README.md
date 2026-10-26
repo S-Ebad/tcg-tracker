@@ -7,8 +7,10 @@ Stores (prices in CAD, in-stock Yu-Gi-Oh singles only):
 |---|---|---|---|
 | **Trinity Hobby** (trinityhobby.com) | `trinity` | Hotyon "USF" search API | ~11,800 listings, 59 requests |
 | **401 Games** (store.401games.ca, Toronto) | `401games` | Fast Simon search API | ~35,000 listings, 141 requests |
+| **Fusion Gaming** (fusiongamingonline.com) | `fusion` | Shopify `products.json` | ~13,800 listings, 58 requests |
 
-About 9,000 cards are carried by both stores and line up on the same `card_key`.
+Cards line up across stores on the same `card_key`: Trinity–401 share ~9,000, 401–Fusion ~11,500,
+Trinity–Fusion ~4,200, and ~3,700 cards are at all three.
 
 Built with Scrapy and PostgreSQL. Priorities: reliable data, loud failures, tests on real data.
 
@@ -106,6 +108,7 @@ job-level alerts (backup, freshness, crashes) keep using `ALERT_DISCORD_WEBHOOK_
 | `tcg_tracker/spiders/trinity.py`, `games401.py` | Get the API config (cached), page the API to the end, decide if the crawl is complete |
 | `parser.py` | Shared card identity (`CardRec`, `VariantRec`, `make_card_key`, art labels, grading) and Trinity's adapter |
 | `adapter_401.py` | 401 Games' adapter: one Fast Simon item -> `CardRec` using the shared rules |
+| `adapter_fusion.py` | Fusion Gaming's adapter: reshapes a Shopify product and reuses Trinity's parser (same BinderPOS conventions) |
 | `db.py` | Batched upserts (COPY into staging tables + set-based SQL), price history, closing a run |
 | `tcg_tracker/pipelines.py` | Glue: parse, save in transactions of 500, finish the run, tell the monitor |
 | `tcg_tracker/monitoring.py` | Checks every run and sends alerts |
@@ -210,7 +213,7 @@ Alerts always go to the log and to `scrape_runs.alerts`. Set `ALERT_DISCORD_WEBH
 ## Tests
 
 ```bash
-pytest                    # 156 tests, about 6 minutes (end-to-end crawls)
+pytest                    # 174 tests, about 13 minutes (end-to-end crawls of three stores)
 ruff check .
 ```
 
@@ -251,6 +254,11 @@ Ask first (see `CLAUDE.md`): each store is a commitment to keep its scraper work
   LP or MP, so best prices never compare it with those.
 - **Edition unknown for some 401 products** (~1,560 listings, e.g. Dark Beginning / Dark Revelation, whose titles
   print no edition). They keep their card key but don't line up with another store's edition-specific offers.
+- **Fusion Gaming has no set names** (`set_name` NULL): the set is one of ~680 mixed tags and isn't guessed; the
+  set code in the card number identifies it. Its products.json `products_count` includes ~0.3% the feed doesn't
+  list, so its count tolerance is 1%. Like 401, no stock counts (`available` only).
+- **Duel Terminal wording differs between stores**: Fusion's "(Duel Terminal) ... Parallel Rare" (40 cards) doesn't
+  say which Duel Terminal rarity it is, so it doesn't match Trinity's "Duel Terminal Technology Ultra Rare" etc.
 - **A 401 crawl takes ~25 minutes** (Fast Simon answers slowly, 5–15 s per page at times); Trinity takes ~1 minute.
 - **History is per run.** Changes between two crawls are seen as one change; sell-outs and restocks between runs are
   invisible.

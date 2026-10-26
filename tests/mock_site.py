@@ -31,6 +31,8 @@ class SavedSiteMiddleware:
             self.items = json.load(f)
         with gzip.open(HERE / "games401_fastsimon.json.gz", "rt", encoding="utf-8") as f:
             self.items401 = json.load(f)
+        with gzip.open(HERE / "fusion_products.json.gz", "rt", encoding="utf-8") as f:
+            self.fusion = json.load(f)
         self.page = (HERE / "data" / "trinity_collection_page.html").read_bytes()
         self.page401 = (HERE / "data" / "games401_collection_page.html").read_bytes()
         self.scenario = os.environ.get("MOCK_SCENARIO", "ok")
@@ -55,6 +57,18 @@ class SavedSiteMiddleware:
             return HtmlResponse(request.url, body=self.page401, encoding="utf-8", request=request)
         if u.netloc == "api.fastsimon.com" and u.path == "/categories_navigation":
             return self._fastsimon(request, parse_qs(u.query))
+        if u.netloc == "fusiongamingonline.com" and u.path == "/collections/yugioh-singles.json":
+            # the real collection counts 38 more products than the feed lists
+            body = {"collection": {"id": 278907387982, "products_count": len(self.fusion) + 38}}
+            return TextResponse(request.url, body=json.dumps(body).encode(), encoding="utf-8", request=request)
+        if u.netloc == "fusiongamingonline.com" and u.path == "/collections/yugioh-singles/products.json":
+            q = parse_qs(u.query)
+            size, page = int(q["limit"][0]), int(q["page"][0])
+            products = self.fusion[(page - 1) * size: page * size]
+            if self.scenario == "truncated" and page >= 5:
+                products = []
+            return TextResponse(request.url, body=json.dumps({"products": products}).encode(), encoding="utf-8",
+                                request=request)
         return TextResponse(request.url, status=404, body=b"not mocked", request=request)
 
     def _fastsimon(self, request, q):
