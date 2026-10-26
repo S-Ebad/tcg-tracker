@@ -15,6 +15,8 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import re
 import smtplib
 import urllib.request
 from dataclasses import dataclass
@@ -139,6 +141,19 @@ def _null_rate_jumps(now: dict | None, before: dict | None, jump: float) -> list
 
 # --- notifiers ----------------------------------------------------------------------------------------------------
 
+def store_webhook_var(store_slug: str) -> str:
+    """Name of a store's own webhook setting, e.g. "401games" -> ALERT_DISCORD_WEBHOOK_URL_401GAMES."""
+    return "ALERT_DISCORD_WEBHOOK_URL_" + re.sub(r"[^A-Z0-9]", "_", store_slug.upper())
+
+
+def discord_url_for(store_slug: str | None, default: str, env=None) -> str:
+    """The store's own webhook if one is set, else the default one (used for every store without its own)."""
+    env = os.environ if env is None else env
+    if store_slug and env.get(store_webhook_var(store_slug)):
+        return env[store_webhook_var(store_slug)]
+    return default
+
+
 def format_message(store: str, run_id, alerts: list[Alert]) -> str:
     worst = "CRITICAL" if any(a.level == "critical" for a in alerts) else "WARNING"
     lines = [f"tcg-tracker {worst}: {store} run {run_id if run_id is not None else '?'}"]
@@ -245,11 +260,14 @@ class RunMonitor:
             logger.error("monitor: could not store alerts: %r", e)
 
     def _notify(self, text: str, alerts: list[Alert]) -> None:
-        if not self.discord_url and not self.email["to"]:
+        # a store can post through its own webhook (its own name in Discord); others use the default one
+        slug = (getattr(self.crawler.spider, "store", None) or {}).get("slug")
+        discord_url = discord_url_for(slug, self.discord_url)
+        if not discord_url and not self.email["to"]:
             logger.warning("monitor: no alert channel configured (ALERT_DISCORD_WEBHOOK_URL / ALERT_EMAIL_TO)")
-        if self.discord_url:
+        if discord_url:
             try:
-                send_discord(self.discord_url, text)
+                send_discord(discord_url, text)
             except Exception as e:
                 logger.error("monitor: Discord alert failed: %r", e)
         if self.email["to"]:

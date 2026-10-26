@@ -55,15 +55,17 @@ def setup_logging(job: str) -> Path:
     return path
 
 
-def alert(text: str) -> None:
-    """Send to Discord / email if configured (same settings as the Scrapy monitor)."""
+def alert(text: str, store: str | None = None) -> None:
+    """Send to Discord / email if configured (same settings as the Scrapy monitor). With `store`, Discord uses that
+    store's own webhook (ALERT_DISCORD_WEBHOOK_URL_<SLUG>) when it has one."""
     from tcg_tracker import monitoring
 
     log.error(text)
     sent = False
-    if os.environ.get("ALERT_DISCORD_WEBHOOK_URL"):
+    discord_url = monitoring.discord_url_for(store, os.environ.get("ALERT_DISCORD_WEBHOOK_URL", ""))
+    if discord_url:
         try:
-            monitoring.send_discord(os.environ["ALERT_DISCORD_WEBHOOK_URL"], text)
+            monitoring.send_discord(discord_url, text)
             sent = True
         except Exception as e:
             log.error("Discord alert failed: %r", e)
@@ -212,7 +214,8 @@ def main(argv=None) -> int:
     c = sub.add_parser("crawl")
     c.add_argument("--no-crawl", action="store_true", help="only start the database, migrate and back up")
     sub.add_parser("check-freshness")
-    sub.add_parser("test-alert")
+    t = sub.add_parser("test-alert")
+    t.add_argument("--store", help="send through this store's own webhook, e.g. 401games")
     args = ap.parse_args(argv)
     load_env()
     path = setup_logging(args.job)
@@ -222,7 +225,8 @@ def main(argv=None) -> int:
     elif args.job == "check-freshness":
         code = job_check_freshness()
     else:
-        alert("tcg-tracker test alert: if you can read this, alerts work.")
+        who = f" for {args.store}" if args.store else ""
+        alert(f"tcg-tracker test alert{who}: if you can read this, alerts work.", store=args.store)
         code = 0
     log.info("job %s finished with exit code %s", args.job, code)
     return code

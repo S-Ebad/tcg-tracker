@@ -98,6 +98,29 @@ def test_field_stats_on_real_crawl_match_measured_baseline(real_crawl):
     assert d["set_code"] == 0.0 and "art_label" not in d
 
 
+def test_store_webhook_overrides_the_default_only_for_that_store():
+    env = {"ALERT_DISCORD_WEBHOOK_URL_401GAMES": "https://discord.test/401"}
+    assert mon.store_webhook_var("401games") == "ALERT_DISCORD_WEBHOOK_URL_401GAMES"
+    assert mon.discord_url_for("401games", "https://discord.test/default", env) == "https://discord.test/401"
+    assert mon.discord_url_for("trinity", "https://discord.test/default", env) == "https://discord.test/default"
+    assert mon.discord_url_for(None, "https://discord.test/default", env) == "https://discord.test/default"
+    assert mon.discord_url_for("401games", "", {}) == ""
+
+
+def test_monitor_sends_401_alerts_through_its_own_webhook(monkeypatch):
+    from tcg_tracker.spiders.games401 import Games401Spider
+
+    sent = []
+    monkeypatch.setattr(mon, "send_discord", lambda url, text: sent.append(url))
+    monkeypatch.setenv("ALERT_DISCORD_WEBHOOK_URL_401GAMES", "https://discord.test/401")
+    crawler = get_crawler(Games401Spider, T | {"ALERT_DISCORD_WEBHOOK_URL": "https://discord.test/default",
+                                               "MONITOR_MIN_ITEM_RATIO": 0.9, "MONITOR_MAX_PROBLEM_RATE": 0.02,
+                                               "MONITOR_NULL_RATE_JUMP": 0.02, "MONITOR_MAX_HTTP_ERROR_RATE": 0.05})
+    crawler.spider = Games401Spider.from_crawler(crawler)
+    mon.RunMonitor.from_crawler(crawler)._notify("x", [])
+    assert sent == ["https://discord.test/401"]
+
+
 def test_message_names_the_worst_level_and_every_alert():
     text = format_message("trinity", 12, [Alert("warning", "a", "x"), Alert("critical", "b", "y")])
     assert text.splitlines() == ["tcg-tracker CRITICAL: trinity run 12", "- [warning] a: x", "- [critical] b: y"]

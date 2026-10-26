@@ -76,6 +76,11 @@ Webhook*, pick a channel, *Copy Webhook URL* and put it in `.env` as `ALERT_DISC
 `python scripts/scheduled.py test-alert` should post a message. Treat the webhook URL like a password: anyone with
 it can post to that channel.
 
+A store can have its own webhook (its own name and avatar in Discord, any channel): set
+`ALERT_DISCORD_WEBHOOK_URL_<STORE>`, e.g. `ALERT_DISCORD_WEBHOOK_URL_401GAMES=...`, and test it with
+`python scripts/scheduled.py test-alert --store 401games`. That store's crawl alerts go there; other stores and the
+job-level alerts (backup, freshness, crashes) keep using `ALERT_DISCORD_WEBHOOK_URL`.
+
 ## Architecture
 
 ```
