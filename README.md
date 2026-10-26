@@ -32,7 +32,42 @@ A crawl needs `TCG_CONTACT_EMAIL`: it goes in the User-Agent so the site owner c
 run end to end yet; the current database was set up by hand). The server isn't a Windows service: start it again
 after a reboot.
 
-**Schedule:** run `scrapy crawl trinity` a couple of times a day (Task Scheduler / cron). Not more: be polite.
+### Scheduled runs, backups and alerts
+
+`scripts/scheduled.py` is what the scheduler runs:
+
+| Command | What it does |
+|---|---|
+| `scheduled.py crawl` | starts the local Postgres if needed, applies migrations, crawls every store, then backs up the database |
+| `scheduled.py check-freshness` | alerts if a store has had no good crawl for `FRESHNESS_MAX_HOURS` (26) |
+| `scheduled.py test-alert` | sends a test message to the configured alert channels |
+
+On Windows, register the jobs once (you run this yourself; it creates tasks in a "tcg-tracker" Task Scheduler
+folder for your user, no admin needed):
+
+```bash
+.venv/Scripts/python scripts/register_tasks.py
+```
+
+That schedules crawls at 07:15 and 19:15 and the freshness check at 12:30. A time missed while the PC was off or
+asleep runs when it's back. `--remove` deletes the tasks. On Linux/macOS use cron:
+`15 7,19 * * * cd /path/to/tcg-tracker && .venv/bin/python scripts/scheduled.py crawl`.
+Twice a day is enough; don't crawl more often.
+
+**Backups:** after every crawl, `pg_dump` writes `tcg-<timestamp>.dump` to `BACKUP_DIR` (default
+`OneDrive\tcg-tracker-backups`, so a copy leaves the machine), checks it with `pg_restore --list` and keeps the newest
+14 (`BACKUP_KEEP`). Restore with:
+
+```bash
+pg_restore -h localhost -U tcg -d tcg --clean --if-exists --no-owner <file>.dump
+```
+
+**Logs:** each job writes to `logs/` (git-ignored); the newest 60 are kept.
+
+**Alerts:** to receive alerts on Discord, open your server's *Server Settings → Integrations → Webhooks → New
+Webhook*, pick a channel, *Copy Webhook URL* and put it in `.env` as `ALERT_DISCORD_WEBHOOK_URL=...`. Then
+`python scripts/scheduled.py test-alert` should post a message. Treat the webhook URL like a password: anyone with
+it can post to that channel.
 
 ## Architecture
 
@@ -156,7 +191,7 @@ Alerts always go to the log and to `scrape_runs.alerts`. Set `ALERT_DISCORD_WEBH
 ## Tests
 
 ```bash
-pytest                    # 111 tests, about a minute
+pytest                    # 117 tests, about a minute
 ruff check .
 ```
 
@@ -203,6 +238,6 @@ Ask first (see `CLAUDE.md`): each store is a commitment to keep its scraper work
 - **13 card keys are shared by two listings** of the same card at Trinity. Allowed: the view picks the cheaper.
 - **The store page is rate-limited** (429). Runs normally don't need it (cached key); after 7 days the spider tries
   it again and falls back to the cached key if it's still blocked.
-- **A run that never starts isn't detected.** Monitoring runs inside the crawl; a stopped scheduler needs an
-  external check (e.g. alert when the newest `scrape_runs.started_at` is more than a day old).
+- **Everything runs on one PC.** Crawls, the freshness check and alerts only happen while it's on (missed times run
+  when it's back). If the PC is off for days, nothing can tell you; the freshness check alerts once it's back on.
 - **CI hasn't run on GitHub yet** (no remote); it was verified locally on Python 3.12 and 3.14.
