@@ -65,8 +65,7 @@ class PostgresPipeline:
             return
         try:
             with self.conn.transaction():
-                for rec, raw in self.buffer:
-                    db.save_item(self.conn, self.store_id, self.run_id, rec, raw)
+                db.save_items(self.conn, self.store_id, self.run_id, self.buffer)
         except psycopg.Error as e:
             self.db_error = f"database error while saving a batch: {e!r}"
             logger.error(self.db_error)

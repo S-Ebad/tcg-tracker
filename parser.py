@@ -31,7 +31,7 @@ class VariantRec:
     condition: str | None      # NM/LP/MP/HP/DMG or None if unrecognised
     edition: str | None
     price: float
-    quantity: int              # -1 = untracked/special, kept as-is
+    quantity: int              # raw "available"; -1 = untracked/unconfirmed, counted as in stock
     in_stock: bool
 
 
@@ -132,8 +132,16 @@ def parse_item(item: dict) -> CardRec:
             probs.append("bad_price")
             continue
         qty = v.get("available", 0)
+        if not isinstance(qty, int) or isinstance(qty, bool):
+            probs.append(f"bad_quantity:{qty!r}")
+            continue
+        # available = -1: Shopify's "inventory not tracked / unconfirmed" (5 of 62,710 variants on the 2026 crawl).
+        # Assumption: such a variant is listed and purchasable, so it counts as in stock; -1 is stored unchanged.
+        # Below -1 would mean oversold: kept raw, out of stock, and flagged.
+        if qty < -1:
+            probs.append(f"negative_quantity:{qty}")
         variants.append(VariantRec(v["id"], v.get("sku"), cond, ed or tag_ed,
-                                   float(price), qty, qty != 0))
+                                   float(price), qty, qty > 0 or qty == -1))
     if len(variants) != len(item["variants"]):
         probs.append("variants_dropped")
 

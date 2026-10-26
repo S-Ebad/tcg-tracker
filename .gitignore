@@ -9,6 +9,9 @@ __pycache__/
 # Local config and secrets
 .env
 
+# Local toolchain: micromamba, conda-forge PostgreSQL and its data directory (scripts/localdb.ps1)
+.tools/
+
 # Scrapy
 .scrapy/
 httpcache/

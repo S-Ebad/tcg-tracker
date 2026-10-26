@@ -37,9 +37,20 @@ def test_rarity_from_title_abbreviation():
     assert parse_item(item("Odd-Eyes (UR) [LEDD-EN001]", ["YGO_S"], ["Near Mint"], [(1, 1)])).rarity == "Ultra Rare"
 
 
-def test_negative_quantity_is_kept_and_counts_as_in_stock_flag():
+def test_unconfirmed_quantity_minus_one_is_kept_raw_and_counts_as_in_stock():
     r = parse_item(item("X [AAAA-EN001] Rare", ["Rare", "YGO_S"], ["Near Mint"], [(-1, 1)]))
-    assert r.variants[0].quantity == -1
+    assert (r.variants[0].quantity, r.variants[0].in_stock) == (-1, True) and not r.problems
+
+
+def test_oversold_quantity_is_kept_out_of_stock_and_flagged():
+    r = parse_item(item("X [AAAA-EN001] Rare", ["Rare", "YGO_S"], ["Near Mint"], [(-3, 1)]))
+    assert (r.variants[0].quantity, r.variants[0].in_stock) == (-3, False)
+    assert r.problems == ["negative_quantity:-3"]
+
+
+def test_non_integer_quantity_drops_the_variant_and_is_flagged():
+    r = parse_item(item("X [AAAA-EN001] Rare", ["Rare", "YGO_S"], ["Near Mint"], [(None, 1)]))
+    assert r.variants == [] and r.problems == ["bad_quantity:None", "variants_dropped"]
 
 
 def test_real_crawl_quality_threshold(real_crawl):

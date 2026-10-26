@@ -26,7 +26,8 @@ def calls(monkeypatch):
     monkeypatch.setattr(pl.psycopg, "connect", lambda *a, **k: FakeConn())
     monkeypatch.setattr(pl.db, "ensure_store", lambda conn, slug, name, url: 1)
     monkeypatch.setattr(pl.db, "start_run", lambda conn, store_id: 7)
-    monkeypatch.setattr(pl.db, "save_item", lambda conn, store_id, run_id, r, raw: rec.saved.append(r.product_id))
+    monkeypatch.setattr(pl.db, "save_items",
+                        lambda conn, store_id, run_id, pairs: rec.saved.extend(r.product_id for r, _ in pairs))
 
     def finish(conn, store_id, run_id, seen, problems, error=None):
         rec.finished = (seen, problems, error)
