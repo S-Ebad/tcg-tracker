@@ -29,7 +29,7 @@ def calls(monkeypatch):
     monkeypatch.setattr(pl.db, "save_items",
                         lambda conn, store_id, run_id, pairs: rec.saved.extend(r.product_id for r, _ in pairs))
 
-    def finish(conn, store_id, run_id, seen, problems, error=None, field_stats=None):
+    def finish(conn, store_id, run_id, seen, problems, error=None, field_stats=None, misses_to_confirm=1):
         rec.finished = (seen, problems, error)
         rec.field_stats = field_stats
         return ("failed" if error else "ok"), error

@@ -67,7 +67,7 @@ GAMES401_FALLBACK_CONFIG = {"uuid": "d3cae9c0-9d9b-4fe3-ad81-873270df14b5", "sto
 GAMES401_CONFIG_MAX_AGE_DAYS = 7
 GAMES401_MAX_PAGES = 300
 GAMES401_PAGE_ATTEMPTS = 3        # re-ask a page whose total disagrees with page 1 (inconsistent index copies)
-GAMES401_COUNT_TOLERANCE = 0.005
+GAMES401_COUNT_TOLERANCE = 0.02     # index drift skips ~0.7% per crawl; misses_to_confirm = 2 guards stock
 
 # Fusion Gaming (Shopify products.json; no API key)
 FUSION_MAX_PAGES = 100            # 56 pages of 250 on 2026-10-26

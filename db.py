@@ -25,7 +25,7 @@ SELECT %(store)s, source_product_id, card_key, url_name, title_raw, problems, tr
 FROM stage_listings
 ON CONFLICT (store_id, source_product_id) DO UPDATE SET
    card_key = EXCLUDED.card_key, url_name = EXCLUDED.url_name, title_raw = EXCLUDED.title_raw,
-   problems = EXCLUDED.problems, in_stock = true, last_seen = now(),
+   problems = EXCLUDED.problems, in_stock = true, last_seen = now(), missed_runs = 0,
    last_run_id = EXCLUDED.last_run_id, raw = EXCLUDED.raw, image_url = EXCLUDED.image_url
 """
 
@@ -126,11 +126,14 @@ def save_item(conn, store_id, run_id, rec, raw):
     save_items(conn, store_id, run_id, [(rec, raw)])
 
 
-def finish_run(conn, store_id, run_id, items_seen, items_with_problems, error=None, field_stats=None):
+def finish_run(conn, store_id, run_id, items_seen, items_with_problems, error=None, field_stats=None,
+               misses_to_confirm=1):
     """Close the run. Only a trustworthy run is allowed to mark missing cards out of stock.
 
     error: set by the caller when the crawl itself was incomplete (paging stopped, count mismatch, DB error).
     field_stats: NULL share per parsed field (monitoring.FieldStats), stored for comparison with later runs.
+    misses_to_confirm: complete runs in a row that must miss a listing before it counts as out of stock
+    (1 = at once; 401 Games uses 2 because its search index drifts).
     Every variant marked out of stock gets a price_history row with source='missing'.
     """
     prev = conn.execute(
@@ -145,19 +148,24 @@ def finish_run(conn, store_id, run_id, items_seen, items_with_problems, error=No
         status, notes = "suspect", f"{items_seen} items vs {prev[0]} last good run"
     listings_out = variants_out = 0
     if status == "ok":
+        # a listing this run didn't see has one more miss; it's out of stock once it reaches misses_to_confirm
+        conn.execute("""UPDATE listings SET missed_runs = missed_runs + 1
+                        WHERE store_id=%s AND last_run_id IS DISTINCT FROM %s AND in_stock""", (store_id, run_id))
         listings_out = conn.execute(
             """UPDATE listings SET in_stock=false
-               WHERE store_id=%s AND last_run_id IS DISTINCT FROM %s AND in_stock""", (store_id, run_id)).rowcount
-        # covers variants of listings that vanished and variants removed from listings that are still there
+               WHERE store_id=%s AND last_run_id IS DISTINCT FROM %s AND in_stock AND missed_runs >= %s""",
+            (store_id, run_id, misses_to_confirm)).rowcount
+        # variants removed from a listing that was seen (certain), and every variant of a listing that's now out;
+        # not the variants of a listing that was only missed once and isn't confirmed yet
         variants_out = conn.execute(
             """WITH gone AS (
                    UPDATE variants SET in_stock=false FROM listings l
                    WHERE variants.listing_id=l.id AND l.store_id=%s AND variants.last_run_id IS DISTINCT FROM %s
-                     AND variants.in_stock
+                     AND variants.in_stock AND (l.last_run_id = %s OR NOT l.in_stock)
                    RETURNING variants.id, variants.price, variants.quantity)
                INSERT INTO price_history (variant_id, price, quantity, in_stock, source)
                SELECT id, price, quantity, false, 'missing' FROM gone ON CONFLICT DO NOTHING""",
-            (store_id, run_id)).rowcount
+            (store_id, run_id, run_id)).rowcount
     conn.execute("""UPDATE scrape_runs SET finished_at=now(), status=%s, items_seen=%s, items_with_problems=%s,
                         notes=%s, listings_marked_out=%s, variants_marked_out=%s, field_stats=%s WHERE id=%s""",
                  (status, items_seen, items_with_problems, notes, listings_out, variants_out,

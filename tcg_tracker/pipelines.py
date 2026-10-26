@@ -90,7 +90,8 @@ class PostgresPipeline:
         try:
             with self.conn.transaction():
                 status, notes = db.finish_run(self.conn, self.store_id, self.run_id, self.saved,
-                                              self.with_problems, error=error, field_stats=field_stats)
+                                              self.with_problems, error=error, field_stats=field_stats,
+                                              misses_to_confirm=getattr(spider, "misses_to_confirm", 1))
         finally:
             self.conn.close()
         self.stats.set_value("tcg/run_status", status)

@@ -58,6 +58,9 @@ class Games401Spider(scrapy.Spider):
     name = "401games"
     store = STORE
     adapter = staticmethod(adapter_401.parse_item)  # raw Fast Simon item -> CardRec
+    # Fast Simon's index copies disagree, so ~0.7% of cards are skipped per crawl (2026-10-26). A card is only out of
+    # stock after two complete runs in a row miss it; real sell-outs are confirmed one run (~12 h) later.
+    misses_to_confirm = 2
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

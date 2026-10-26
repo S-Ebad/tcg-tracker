@@ -40,13 +40,14 @@ def raw(pid, variants, title="Therion Cross [DIFO-EN070] Super Rare"):
                          for i, (vid, a, p) in enumerate(variants)]}
 
 
-def crawl(conn, store, raws, items_seen=None):
+def crawl(conn, store, raws, items_seen=None, misses_to_confirm=1):
     """One complete run: save everything in one batch, then finish it."""
     run = db.start_run(conn, store)
     with conn.transaction():
         db.save_items(conn, store, run, [(parse_item(r), r) for r in raws])
     with conn.transaction():
-        status, _ = db.finish_run(conn, store, run, len(raws) if items_seen is None else items_seen, 0)
+        status, _ = db.finish_run(conn, store, run, len(raws) if items_seen is None else items_seen, 0,
+                                  misses_to_confirm=misses_to_confirm)
     return run, status
 
 
@@ -110,6 +111,35 @@ def test_restock_after_missing_is_recorded(conn, store):
     crawl(conn, store, [raw(1, [(10, 1, 0.6)])] + keep)
     assert history(conn, 10)[-1] == (0.6, 1, True, "seen")
     assert conn.execute("SELECT in_stock FROM listings WHERE source_product_id=1").fetchone() == (True,)
+
+
+def test_two_misses_needed_when_the_store_asks_for_it(conn, store):
+    keep = [raw(n, [(n * 10, 1, 1.0)], title=f"Card [AAAA-EN{n:03d}] Rare") for n in range(2, 40)]
+    card = raw(1, [(10, 3, 0.6)])
+    crawl(conn, store, [card] + keep, misses_to_confirm=2)
+    crawl(conn, store, keep, misses_to_confirm=2)  # missed once (index drift): still in stock
+    assert conn.execute("SELECT in_stock, missed_runs FROM listings WHERE source_product_id=1").fetchone() == (True, 1)
+    assert conn.execute("SELECT in_stock FROM variants WHERE source_variant_id=10").fetchone() == (True,)
+    crawl(conn, store, keep, misses_to_confirm=2)  # missed again: now out of stock
+    assert conn.execute("SELECT in_stock FROM listings WHERE source_product_id=1").fetchone() == (False,)
+    assert history(conn, 10)[-1] == (0.6, 3, False, "missing")
+
+
+def test_a_seen_listing_resets_its_misses(conn, store):
+    keep = [raw(n, [(n * 10, 1, 1.0)], title=f"Card [AAAA-EN{n:03d}] Rare") for n in range(2, 40)]
+    card = raw(1, [(10, 3, 0.6)])
+    crawl(conn, store, [card] + keep, misses_to_confirm=2)
+    crawl(conn, store, keep, misses_to_confirm=2)
+    crawl(conn, store, [card] + keep, misses_to_confirm=2)
+    assert conn.execute("SELECT missed_runs FROM listings WHERE source_product_id=1").fetchone() == (0,)
+    crawl(conn, store, keep, misses_to_confirm=2)  # one miss again: not out
+    assert conn.execute("SELECT in_stock FROM listings WHERE source_product_id=1").fetchone() == (True,)
+
+
+def test_variant_gone_from_a_seen_listing_is_out_at_once_even_with_two_misses(conn, store):
+    crawl(conn, store, [raw(1, [(10, 3, 0.6), (11, 2, 0.5)])], misses_to_confirm=2)
+    crawl(conn, store, [raw(1, [(10, 3, 0.6)])], misses_to_confirm=2)
+    assert conn.execute("SELECT in_stock FROM variants WHERE source_variant_id=11").fetchone() == (False,)
 
 
 def test_suspect_run_marks_nothing_out_and_writes_no_missing_rows(conn, store):
