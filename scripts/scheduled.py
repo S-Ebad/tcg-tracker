@@ -120,12 +120,20 @@ def migrate() -> None:
         log.info("applied migrations %s", applied)
 
 
-def run_spider(name: str) -> int:
-    log_file = LOG_DIR / f"{dt.datetime.now():%Y%m%d-%H%M%S}-scrapy-{name}.log"
-    proc = subprocess.run([sys.executable, "-m", "scrapy", "crawl", name, "-s", f"LOG_FILE={log_file}"],
-                          cwd=ROOT, env=os.environ.copy(), creationflags=NO_WINDOW)
-    log.info("spider %s exited with %s (log: %s)", name, proc.returncode, log_file.name)
-    return proc.returncode
+def run_spiders(names: list[str]) -> dict[str, int]:
+    """Crawl every store at the same time, one process each, and wait for all of them. Each store still sees one
+    request at a time from us; the run takes as long as the slowest store instead of the sum. Returns exit codes."""
+    procs = {}
+    for name in names:
+        log_file = LOG_DIR / f"{dt.datetime.now():%Y%m%d-%H%M%S}-scrapy-{name}.log"
+        procs[name] = (subprocess.Popen([sys.executable, "-m", "scrapy", "crawl", name, "-s", f"LOG_FILE={log_file}"],
+                                        cwd=ROOT, env=os.environ.copy(), creationflags=NO_WINDOW), log_file)
+        log.info("spider %s started (log: %s)", name, log_file.name)
+    codes = {}
+    for name, (proc, log_file) in procs.items():
+        codes[name] = proc.wait()
+        log.info("spider %s exited with %s (log: %s)", name, codes[name], log_file.name)
+    return codes
 
 
 def backup_dir() -> Path:
@@ -167,7 +175,7 @@ def job_crawl(no_crawl: bool) -> int:
         return 2
     failed = []
     if not no_crawl:
-        failed = [s for s in SPIDERS if run_spider(s) != 0]
+        failed = [s for s, code in run_spiders(SPIDERS).items() if code != 0]
         if failed:
             # run quality is alerted by the in-crawl monitor; a non-zero exit means the process itself broke
             alert(f"tcg-tracker CRITICAL: scrapy process failed for {', '.join(failed)}; see logs/")

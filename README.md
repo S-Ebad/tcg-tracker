@@ -283,6 +283,7 @@ Ask first (see `CLAUDE.md`): each store is a commitment to keep its scraper work
 - **Duel Terminal wording differs between stores**: Fusion's "(Duel Terminal) ... Parallel Rare" (40 cards) doesn't
   say which Duel Terminal rarity it is, so it doesn't match Trinity's "Duel Terminal Technology Ultra Rare" etc.
 - **A 401 crawl takes ~25 minutes** (Fast Simon answers slowly, 5–15 s per page at times); Trinity takes ~1 minute.
+  The scheduled job crawls all stores at the same time (one process each), so a run takes as long as the slowest.
 - **History is per run.** Changes between two crawls are seen as one change; sell-outs and restocks between runs are
   invisible.
 - **Stock is inferred from absence.** The API hides out-of-stock cards, so "out of stock" means "missing from a

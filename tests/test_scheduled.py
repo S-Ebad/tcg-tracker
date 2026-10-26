@@ -46,6 +46,26 @@ def test_freshness_alerts_on_stale_and_never_crawled_stores(monkeypatch):
     assert "trinity (30 h ago)" in sent[0] and "other (never)" in sent[0] and "paused" not in sent[0]
 
 
+def test_spiders_run_at_the_same_time(monkeypatch, tmp_path):
+    events = []
+
+    class FakeProc:
+        def __init__(self, cmd, **kw):
+            self.name = cmd[cmd.index("crawl") + 1]
+            events.append(("start", self.name))
+
+        def wait(self):
+            events.append(("wait", self.name))
+            return 0 if self.name != "bad" else 1
+
+    monkeypatch.setattr(scheduled.subprocess, "Popen", FakeProc)
+    monkeypatch.setattr(scheduled, "LOG_DIR", tmp_path)
+    codes = scheduled.run_spiders(["trinity", "401games", "bad"])
+    assert codes == {"trinity": 0, "401games": 0, "bad": 1}
+    # every crawl is started before the job waits for any of them
+    assert [e[0] for e in events] == ["start"] * 3 + ["wait"] * 3
+
+
 def test_crawl_job_alerts_when_the_database_cannot_start(monkeypatch):
     sent = []
 
