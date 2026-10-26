@@ -6,7 +6,9 @@ IMAGE_CACHE_DIR, TCG_CONTACT_EMAIL (User-Agent for image downloads).
 from __future__ import annotations
 
 import os
+import re
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Literal
 
 from fastapi import FastAPI, HTTPException, Query
@@ -17,6 +19,23 @@ from psycopg_pool import ConnectionPool
 from api import images, queries
 
 pool: ConnectionPool | None = None
+
+
+ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
+
+
+def load_env(path: Path = ENV_FILE) -> None:
+    """Read the project's .env (KEY=value lines) so `uvicorn api.main:app` works from any shell.
+    Values already in the environment win."""
+    if not path.exists():
+        return
+    for line in path.read_text(encoding="utf-8").splitlines():
+        m = re.match(r"^\s*([A-Za-z_][A-Za-z0-9_]*)=(.*)$", line)
+        if m and m.group(1) not in os.environ:
+            os.environ[m.group(1)] = m.group(2).strip()
+
+
+load_env()
 
 
 @asynccontextmanager
