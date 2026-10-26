@@ -26,7 +26,11 @@ class FusionSpider(scrapy.Spider):
     name = "fusion"
     store = STORE
     adapter = staticmethod(adapter_fusion.parse_item)  # Shopify product -> CardRec
-    custom_settings = {"DOWNLOAD_DELAY": 2.0}
+    # Shopify answers bots on the store domain with 429 + Retry-After 60 (2026-10-26). Ride just under that limit:
+    # the delay shrinks while pages come through (floor 3 s) and doubles on every 429 (cap 2 min), on top of
+    # honouring Retry-After; a page is given ~15 minutes of 429s before the run gives up, as agents.md asks.
+    custom_settings = {"DOWNLOAD_DELAY": 10.0, "AUTOTHROTTLE_ENABLED": False, "RETRY_TIMES": 15,
+                       "ADAPTIVE_DELAY_ENABLED": True, "ADAPTIVE_DELAY_MIN": 3.0, "ADAPTIVE_DELAY_MAX": 120.0}
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

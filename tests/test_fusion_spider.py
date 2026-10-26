@@ -76,5 +76,38 @@ def test_page_cap(spider):
         run(req, json_response(req, {"products": products(0, 250)}))
 
 
-def test_waits_longer_between_requests_to_the_store():
-    assert FusionSpider.custom_settings["DOWNLOAD_DELAY"] >= 2
+def test_rides_the_rate_limit_and_is_patient_with_the_store():
+    s = FusionSpider.custom_settings
+    assert s["ADAPTIVE_DELAY_ENABLED"] and s["ADAPTIVE_DELAY_MIN"] >= 3 and not s["AUTOTHROTTLE_ENABLED"]
+    assert s["RETRY_TIMES"] >= 15  # ~15 min of honouring Retry-After: 60 per page
+
+
+def test_adaptive_delay_speeds_up_on_success_and_backs_off_on_429():
+    from types import SimpleNamespace
+
+    from scrapy.exceptions import NotConfigured
+
+    from tcg_tracker.middlewares import AdaptiveDelayMiddleware
+
+    crawler = get_crawler(FusionSpider, {"ADAPTIVE_DELAY_ENABLED": True, "ADAPTIVE_DELAY_MIN": 3.0,
+                                         "ADAPTIVE_DELAY_MAX": 120.0})
+    slot = SimpleNamespace(delay=10.0)
+    crawler.engine = SimpleNamespace(downloader=SimpleNamespace(slots={"s": slot}, get_slot_key=lambda r: "s"))
+    mw = AdaptiveDelayMiddleware.from_crawler(crawler)
+    req = Request("https://fusiongamingonline.com/x")
+    ok, slow = TextResponse(req.url, status=200, body=b""), TextResponse(req.url, status=429, body=b"")
+    mw.process_response(req, ok)
+    assert slot.delay == pytest.approx(8.5)
+    for _ in range(30):
+        mw.process_response(req, ok)
+    assert slot.delay == 3.0  # floor
+    mw.process_response(req, slow)
+    mw.process_response(req, slow)
+    assert slot.delay == 12.0
+    for _ in range(10):
+        mw.process_response(req, slow)
+    assert slot.delay == 120.0  # cap
+    from scrapy import Spider
+
+    with pytest.raises(NotConfigured):  # other spiders (Trinity, 401) don't turn it on
+        AdaptiveDelayMiddleware.from_crawler(get_crawler(Spider))

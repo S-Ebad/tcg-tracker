@@ -24,6 +24,8 @@ RETRY_HTTP_CODES = [429, 500, 502, 503, 504, 522, 524, 408]
 DOWNLOADER_MIDDLEWARES = {
     # runs before RetryMiddleware (550) on the way back, so the retry happens after the wait
     "tcg_tracker.middlewares.RetryAfterMiddleware": 560,
+    # off unless a spider sets ADAPTIVE_DELAY_ENABLED (see middlewares.AdaptiveDelayMiddleware)
+    "tcg_tracker.middlewares.AdaptiveDelayMiddleware": 570,
 }
 
 ITEM_PIPELINES = {
