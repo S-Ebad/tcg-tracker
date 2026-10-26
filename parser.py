@@ -25,6 +25,14 @@ RARITY_ABBR = {"UR": "Ultra Rare", "SR": "Super Rare", "SCR": "Secret Rare", "R"
                "C": "Common", "CR": "Collector's Rare", "UTR": "Ultimate Rare", "GR": "Gold Rare",
                "PS": "Platinum Secret Rare", "QCSR": "Quarter Century Secret Rare"}
 PAREN_RE = re.compile(r"\(([^()]*)\)")
+# Graded slabs ("... Ultra Rare - PSA 7") are a different product from raw copies: quarantined, never keyed.
+GRADE_RE = re.compile(r"\b(PSA|BGS|CGC|SGC|Beckett)\s*(10|[1-9](?:\.5)?)\b")
+PLAIN_RARITIES = ("common", "short print", "super short print")
+
+
+def _is_rarity_text(s: str) -> bool:
+    s = s.lower()
+    return "rare" in s or s in PLAIN_RARITIES or s.endswith(" common")  # e.g. "Duel Terminal Technology Common"
 
 
 @dataclass
@@ -77,8 +85,7 @@ def _normalise_tags(tags: list[str]) -> list[str]:
 
 def _rarity(tags: list[str]) -> str | None:
     c = [t for t in tags
-         if t.lower() not in NON_RARITY and not t.lower().startswith(NON_RARITY_PREFIX)
-         and ("rare" in t.lower() or t.lower() in ("common", "short print", "super short print"))]
+         if t.lower() not in NON_RARITY and not t.lower().startswith(NON_RARITY_PREFIX) and _is_rarity_text(t)]
     return c[0] if len(c) == 1 else (None if not c else sorted(c, key=len)[-1])
 
 
@@ -93,6 +100,18 @@ def _rarity_from_title(parens: list[str]) -> str | None:
         if "rare" in p.lower():
             return p
     return None
+
+
+def _rarity_from_title_suffix(title: str) -> str | None:
+    """Rarity printed after the code: "[HAC1-EN026] Common" or "[PHRE-EN039] - Phantom Revenge ... - Ultra Rare".
+
+    Only accepted when it reads as a rarity; anything else ("Promo") stays unknown.
+    """
+    if "]" not in title:
+        return None
+    after = GRADE_RE.sub("", PAREN_RE.sub("", title.split("]", 1)[1])).strip(" -")
+    last = after.rsplit(" - ", 1)[-1].strip()
+    return last if last and _is_rarity_text(last) else None
 
 
 def _slug(s: str) -> str:
@@ -117,13 +136,19 @@ def parse_item(item: dict) -> CardRec:
     if not set_name:
         probs.append("no_set_name")
     parens = _title_parens(title)
-    rarity = _rarity(tags) or _rarity_from_title(parens)
+    # most specific first: tags, then a parenthetical, then the text printed after the code
+    rarity = _rarity(tags) or _rarity_from_title(parens) or _rarity_from_title_suffix(title)
     if not rarity:
         probs.append("no_rarity")
-    # art / alt-version qualifier: parentheticals that are not the rarity
+    graded = GRADE_RE.search(title)
+    if graded:
+        probs.append(f"graded:{graded.group(1)} {graded.group(2)}")
+    # art / alt-version qualifier: parentheticals that are not the rarity or a short form of it
+    # ("(Ghost)" on a Ghost Rare, "(Duel Terminal)" on a Duel Terminal Technology Common)
     rar_l = (rarity or "").lower()
     art = [p for p in parens
-           if p.lower() != rar_l and p not in RARITY_ABBR and "rare" not in p.lower()]
+           if p.lower() != rar_l and not rar_l.startswith(p.lower() + " ")
+           and p not in RARITY_ABBR and "rare" not in p.lower()]
     art_label = "; ".join(art) or None
     tag_ed = next((t for t in tags if t in EDITIONS), None)
 
@@ -161,7 +186,7 @@ def parse_item(item: dict) -> CardRec:
 
     ed_key = tag_ed or next((x.edition for x in variants if x.edition), None)
     key = None
-    if set_code and number and rarity:
+    if set_code and number and rarity and not graded:
         key = "|".join([f"{set_code}-{lang}{number}", _slug(rarity), _slug(ed_key or "unknown"),
                          _slug(art_label) if art_label else "base"])
     return CardRec(item["id"], item.get("urlName", ""), name, set_code, lang,

@@ -77,7 +77,7 @@ def test_full_crawl_into_postgres_then_second_run_uses_cached_key(tmp_path, test
     assert code == 0, log[-2000:]
     assert query("SELECT status, items_seen, alerts FROM scrape_runs") == [("ok", 11793, [])]
     assert query("SELECT (SELECT count(*) FROM listings), (SELECT count(*) FROM cards),"
-                 " (SELECT count(*) FROM variants)") == [(11793, 11713, 62710)]
+                 " (SELECT count(*) FROM variants)") == [(11793, 11778, 62710)]
     assert query("SELECT value->>'api_key' FROM store_config") == [("04572457-312a-4a58-b5e9-6aff246ee39f",)]
     assert any("trinityhobby.com/collections" in u for u in urls)
 

@@ -83,10 +83,38 @@ def test_prefixed_tag_style_is_read_like_classic_tags(by_id):
     assert (r.rarity, r.card_key.split("|")[2]) == ("Quarter Century Secret Rare", "1st-edition")
 
 
-def test_no_rarity_is_quarantined_not_guessed(by_id):
-    r = parsed(by_id, 7941423431927)  # Waboku (Duel Terminal) [HAC1-EN026] Common
-    assert r.card_key is None and r.problems == ["no_rarity"]
-    assert len(r.variants) == 5  # still tracked as a listing
+def test_duel_terminal_common_tag_is_a_rarity_and_its_parenthetical_is_not_art(by_id):
+    r = parsed(by_id, 7941423431927)  # Waboku (Duel Terminal) [HAC1-EN026] Common, tag "Duel Terminal Technology Common"
+    assert (r.rarity, r.art_label) == ("Duel Terminal Technology Common", None)
+    assert r.card_key == "HAC1-EN026|duel-terminal-technology-common|1st-edition|base" and not r.problems
+
+
+@pytest.mark.parametrize("pid,rarity", [
+    (9866095067383, "Ultra Rare"),  # Kewl Tune Synchro [PHRE-EN039] - Phantom Revenge 1st Edition - Ultra Rare
+])
+def test_rarity_printed_after_the_code(by_id, pid, rarity):
+    r = parsed(by_id, pid)
+    assert r.rarity == rarity and r.card_key and "no_rarity" not in r.problems
+
+
+def test_promo_is_not_a_rarity_and_stays_quarantined(by_id, real_crawl):
+    left = [r["title"] for r in real_crawl if "no_rarity" in parse_item(r).problems]
+    assert left == ["Azure-Eyes Silver Dragon (Oversized) (Silver Dragon) [SDBE-EN040] Promo"]
+
+
+@pytest.mark.parametrize("pid,key", [
+    (7941117509879, "TDGS-EN040|ghost-rare|unlimited|base"),           # Stardust Dragon (Ghost) ... Ghost Rare
+    (7940843929847, "GLD5-EN001|ghost-gold-rare|limited|base"),
+])
+def test_rarity_short_form_in_parentheses_is_not_art(by_id, pid, key):
+    r = parsed(by_id, pid)
+    assert (r.card_key, r.art_label) == (key, None)
+
+
+def test_graded_slab_is_quarantined(by_id):
+    r = parsed(by_id, 10001299833079)  # The Black Stone of Legend [LDK2-ENJ05] Ultra Rare - PSA 7
+    assert r.card_key is None and "graded:PSA 7" in r.problems
+    assert r.rarity == "Ultra Rare" and len(r.variants) == 1  # still tracked as a listing
 
 
 def test_missing_set_name_tag_keeps_the_card_key(by_id):
@@ -97,7 +125,7 @@ def test_missing_set_name_tag_keeps_the_card_key(by_id):
 
 def test_item_without_option_values_keeps_variant_with_unknown_condition(by_id):
     r = parsed(by_id, 10001299833079)  # The Black Stone of Legend ... - PSA 7
-    assert r.problems == ["no_option_values", "variant_option_index_unresolved"]
+    assert r.problems == ["graded:PSA 7", "no_option_values", "variant_option_index_unresolved"]
     assert [v.condition for v in r.variants] == [None]
 
 
@@ -110,8 +138,9 @@ def test_variant_key_is_variant_id_even_when_sku_is_missing(by_id):
 def test_real_crawl_problem_breakdown(real_crawl):
     recs = [parse_item(r) for r in real_crawl]
     kinds = Counter(p.split(":")[0] for r in recs for p in r.problems)
-    assert kinds == {"no_rarity": 67, "no_set_name": 8, "no_option_values": 1, "variant_option_index_unresolved": 1,
-                     "negative_quantity": 1}
+    assert kinds == {"no_rarity": 1, "graded": 1, "no_set_name": 8, "no_option_values": 1,
+                     "variant_option_index_unresolved": 1, "negative_quantity": 1}
     keys = Counter(r.card_key for r in recs if r.card_key)
+    assert len(keys) == 11778 and sum(1 for r in recs if r.card_key is None) == 2
     assert sum(1 for n in keys.values() if n > 1) == 13  # same card listed twice: allowed
     assert {v.condition for r in recs for v in r.variants} == {"NM", "LP", "MP", "HP", "DMG", None}

@@ -1,3 +1,5 @@
+import pytest
+
 from parser import parse_item
 
 
@@ -35,6 +37,38 @@ def test_art_variants_get_different_keys():
 
 def test_rarity_from_title_abbreviation():
     assert parse_item(item("Odd-Eyes (UR) [LEDD-EN001]", ["YGO_S"], ["Near Mint"], [(1, 1)])).rarity == "Ultra Rare"
+
+
+@pytest.mark.parametrize("title,rarity", [
+    ("X [AAAA-EN001] Common", "Common"),
+    ("X [AAAA-EN001] - Some Set 1st Edition - Ultra Rare", "Ultra Rare"),
+    ("X [AAAA-EN001] - Some Set - Secret Rare (Copy)", "Secret Rare"),
+    ("X [AAAA-EN001] Ultra Rare - PSA 9.5", "Ultra Rare"),
+    ("X [AAAA-EN001] Promo", None),
+    ("X [AAAA-EN001]", None),
+])
+def test_rarity_printed_after_the_code(title, rarity):
+    assert parse_item(item(title, ["YGO_S"], ["Near Mint"], [(1, 1)])).rarity == rarity
+
+
+def test_tag_rarity_wins_over_title_suffix():
+    r = parse_item(item("X (Duel Terminal) [HAC1-EN001] Common", ["YGO_S", "Duel Terminal Technology Common"],
+                        ["Near Mint"], [(1, 1)]))
+    assert (r.rarity, r.art_label) == ("Duel Terminal Technology Common", None)
+
+
+@pytest.mark.parametrize("title", ["X [AAAA-EN001] Ultra Rare - PSA 7", "X [AAAA-EN001] Rare BGS 9.5",
+                                   "X [AAAA-EN001] Rare - CGC 10"])
+def test_graded_slabs_are_quarantined(title):
+    r = parse_item(item(title, ["Ultra Rare", "YGO_S"], ["Near Mint"], [(1, 1)]))
+    assert r.card_key is None and any(p.startswith("graded:") for p in r.problems)
+
+
+def test_rarity_short_form_is_not_art_but_a_real_art_label_still_is():
+    assert parse_item(item("X (Ghost) [AAAA-EN001] Ghost Rare", ["Ghost Rare", "YGO_S"], ["Near Mint"],
+                           [(1, 1)])).art_label is None
+    assert parse_item(item("X (Green) [AAAA-EN001] Rare", ["Rare", "YGO_S"], ["Near Mint"],
+                           [(1, 1)])).art_label == "Green"
 
 
 def test_unconfirmed_quantity_minus_one_is_kept_raw_and_counts_as_in_stock():

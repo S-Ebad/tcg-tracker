@@ -93,7 +93,8 @@ def test_field_stats_on_real_crawl_match_measured_baseline(real_crawl):
         fs.add(parse_item(r))
     d = fs.as_dict()
     assert (d["n_listings"], d["n_variants"]) == (11793, 62710)
-    assert d["card_key"] == pytest.approx(0.0057, abs=1e-4) and d["variant.sku"] == pytest.approx(0.0491, abs=1e-4)
+    assert d["card_key"] == pytest.approx(2 / 11793, abs=1e-5) and d["rarity"] == pytest.approx(1 / 11793, abs=1e-5)
+    assert d["variant.sku"] == pytest.approx(0.0491, abs=1e-4)
     assert d["set_code"] == 0.0 and "art_label" not in d
 
 

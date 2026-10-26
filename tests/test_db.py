@@ -167,5 +167,5 @@ def test_real_crawl_loads_with_expected_counts(conn, store, real_crawl):
             db.save_items(conn, store, run, pairs[i:i + 500])
     counts = [conn.execute(f"SELECT count(*) FROM {t}").fetchone()[0]
               for t in ("listings", "cards", "variants", "price_history")]
-    assert counts == [11793, 11713, 62710, 62710]
+    assert counts == [11793, 11778, 62710, 62710]
     assert conn.execute("SELECT count(*) FROM listings WHERE card_key IS NULL").fetchone()[0] < 0.01 * 11793
