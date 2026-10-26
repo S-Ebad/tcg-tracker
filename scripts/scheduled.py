@@ -22,8 +22,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-# fusion is paused: Shopify rate-limits our requests to its store (HTTP 429, 2026-10-26); needs a crawler access key
-SPIDERS = ["trinity", "401games"]
+SPIDERS = ["trinity", "401games", "fusion"]
 PG_BIN = ROOT / ".tools" / "pg" / "Library" / "bin"   # conda-forge Postgres; skipped when absent (Docker)
 PG_DATA = ROOT / ".tools" / "pgdata"
 LOG_DIR = ROOT / "logs"

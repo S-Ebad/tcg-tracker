@@ -76,10 +76,11 @@ def test_page_cap(spider):
         run(req, json_response(req, {"products": products(0, 250)}))
 
 
-def test_rides_the_rate_limit_and_is_patient_with_the_store():
+def test_slow_patient_and_time_capped():
     s = FusionSpider.custom_settings
-    assert s["ADAPTIVE_DELAY_ENABLED"] and s["ADAPTIVE_DELAY_MIN"] >= 3 and not s["AUTOTHROTTLE_ENABLED"]
-    assert s["RETRY_TIMES"] >= 15  # ~15 min of honouring Retry-After: 60 per page
+    assert s["DOWNLOAD_DELAY"] >= 15 and s["RETRY_TIMES"] >= 15  # ~15 min of honouring Retry-After: 60 per page
+    assert not s.get("ADAPTIVE_DELAY_ENABLED")
+    assert s["CLOSESPIDER_TIMEOUT"] <= 100 * 60  # ends before the scheduled task's 2-hour limit
 
 
 def test_adaptive_delay_speeds_up_on_success_and_backs_off_on_429():

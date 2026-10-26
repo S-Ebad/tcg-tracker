@@ -26,11 +26,13 @@ class FusionSpider(scrapy.Spider):
     name = "fusion"
     store = STORE
     adapter = staticmethod(adapter_fusion.parse_item)  # Shopify product -> CardRec
-    # Shopify answers bots on the store domain with 429 + Retry-After 60 (2026-10-26). Ride just under that limit:
-    # the delay shrinks while pages come through (floor 3 s) and doubles on every 429 (cap 2 min), on top of
-    # honouring Retry-After; a page is given ~15 minutes of 429s before the run gives up, as agents.md asks.
-    custom_settings = {"DOWNLOAD_DELAY": 10.0, "AUTOTHROTTLE_ENABLED": False, "RETRY_TIMES": 15,
-                       "ADAPTIVE_DELAY_ENABLED": True, "ADAPTIVE_DELAY_MIN": 3.0, "ADAPTIVE_DELAY_MAX": 120.0}
+    # Shopify answers bots on the store domain with 429 + Retry-After 60 (2026-10-26). Fixed slow pacing (15 s between
+    # requests) and ~15 minutes of honouring Retry-After per page. The adaptive delay (middlewares.
+    # AdaptiveDelayMiddleware) was tried and didn't help once Shopify had tightened its limit, so it stays off here.
+    # CLOSESPIDER_TIMEOUT ends a crawl that Shopify drags past 100 minutes (a failed run) so the scheduled job, which
+    # waits for every store, still finishes and backs up within the task's 2-hour limit.
+    custom_settings = {"DOWNLOAD_DELAY": 15.0, "AUTOTHROTTLE_START_DELAY": 15.0, "AUTOTHROTTLE_MAX_DELAY": 120,
+                       "RETRY_TIMES": 15, "CLOSESPIDER_TIMEOUT": 6000}
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
