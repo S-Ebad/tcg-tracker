@@ -72,6 +72,23 @@ def test_graded_slabs_are_quarantined(title):
     assert r.card_key is None and any(p.startswith("graded:") for p in r.problems)
 
 
+def test_title_abbreviation_narrows_a_vaguer_tag_rarity_but_never_contradicts_it():
+    narrowed = parse_item(item("X (ESR) [25LP-EN003] Secret Rare", ["Secret Rare", "YGO_S"], ["Near Mint"], [(1, 1)]))
+    assert (narrowed.rarity, narrowed.art_label) == ("Emblazoned Secret Rare", None)
+    other = parse_item(item("X (PSR) [AAAA-EN001] Ultra Rare", ["Ultra Rare", "YGO_S"], ["Near Mint"], [(1, 1)]))
+    assert (other.rarity, other.art_label) == ("Ultra Rare", None)  # PSR doesn't narrow "Ultra Rare": tag wins
+    alt = parse_item(item("X (B) [RA03-EN123] Platinum Secret Rare", ["Platinum Secret Rare", "YGO_S"],
+                          ["Near Mint"], [(1, 1)]))
+    assert alt.art_label == "B"  # alternate-art letters are real version labels
+
+
+def test_image_url_is_made_absolute():
+    raw = item("X [AAAA-EN001] Rare", ["Rare", "YGO_S"], ["Near Mint"], [(1, 1)])
+    raw["images"] = [{"url": "//cdn.shopify.com/s/files/x.jpg?v=1"}]
+    assert parse_item(raw).image_url == "https://cdn.shopify.com/s/files/x.jpg?v=1"
+    assert parse_item(item("X [AAAA-EN001] Rare", ["Rare"], ["Near Mint"], [(1, 1)])).image_url is None
+
+
 def test_rarity_short_form_is_not_art_but_a_real_art_label_still_is():
     assert parse_item(item("X (Ghost) [AAAA-EN001] Ghost Rare", ["Ghost Rare", "YGO_S"], ["Near Mint"],
                            [(1, 1)])).art_label is None

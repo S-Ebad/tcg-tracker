@@ -48,6 +48,18 @@ def test_version_labels(by_id, pid, key):
     assert parse_item(by_id[pid]).card_key == key
 
 
+def test_esr_in_the_title_matches_401s_emblazoned_secret_rare(by_id):
+    # Fusion tags it only "Secret Rare"; 401 calls the same card "Emblazoned Secret Rare"
+    assert parse_item(by_id[7710314594382]).card_key == "25LP-EN003|emblazoned-secret-rare|base"
+    assert parse_item(by_id[7690633576526]).card_key == "25LP-EN003|secret-rare|base"  # the plain printing
+
+
+def test_every_product_with_an_image_gets_an_https_link(fusion):
+    urls = [parse_item(p).image_url for p in fusion]
+    assert sum(u is not None for u in urls) == 13836
+    assert all(u.startswith("https://cdn.shopify.com/") for u in urls if u)
+
+
 def test_token_without_card_number_is_quarantined(by_id):
     r = parse_item(by_id[7476190150734])  # Token [SR01-ENTKN] Common
     assert r.card_key is None and r.problems == ["no_set_code"]
@@ -69,4 +81,4 @@ def test_card_keys_line_up_with_the_other_stores(fusion, real_crawl):
         k401 = {r.card_key for r in map(parse_401, json.load(f)) if r.card_key}
     kfus = {r.card_key for r in map(parse_item, fusion) if r.card_key}
     ktrin = {r.card_key for r in map(parse_trinity, real_crawl) if r.card_key}
-    assert (len(kfus), len(kfus & ktrin), len(kfus & k401), len(kfus & ktrin & k401)) == (13825, 4166, 11455, 3723)
+    assert (len(kfus), len(kfus & ktrin), len(kfus & k401), len(kfus & ktrin & k401)) == (13825, 4166, 11456, 3723)

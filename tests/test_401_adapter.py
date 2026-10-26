@@ -97,11 +97,16 @@ def test_whole_crawl(crawl401):
     assert all(v.quantity is None for r in recs for v in r.variants)
 
 
+def test_every_item_has_an_https_image(crawl401):
+    urls = [parse_item(it).image_url for it in crawl401]
+    assert all(u and u.startswith("https://") for u in urls)
+
+
 def test_card_keys_line_up_with_trinity(crawl401, real_crawl):
     k401 = {r.card_key for r in map(parse_item, crawl401) if r.card_key}
     trin = [trinity_parse(r) for r in real_crawl]
     ktrin = {r.card_key for r in trin if r.card_key}
-    assert len(k401) == 30176 and len(k401 & ktrin) == 8987
+    assert len(k401) == 30176 and len(k401 & ktrin) == 8988
     # of the card numbers both stores carry, nearly all share at least one exact key
     nums = {k.split("|")[0] for k in k401} & {k.split("|")[0] for k in ktrin}
     assert len({k.split("|")[0] for k in k401 & ktrin}) / len(nums) > 0.95

@@ -42,6 +42,8 @@ def parse_item(product: dict) -> CardRec:
         v.quantity = None
         v.in_stock = available.get(v.variant_id, False)
     rec.problems = [p for p in rec.problems if p != "no_set_name"]
+    images = product.get("images") or []
+    rec.image_url = parser.https_url(images[0].get("src")) if images else None
     if product.get("product_type") != "Yugioh Single":
         rec.problems.append(f"not_a_single:{product.get('product_type')}")
         rec.card_key = None

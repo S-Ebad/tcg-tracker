@@ -108,7 +108,12 @@ From mobile layout feedback on the mockups (2026-10-26). Mobile first; dark mode
 
 Paging on lists (`limit`, `offset`). Prices in CAD. Only in-stock offers unless asked.
 
-## Data work needed first (step 2)
+## Data work needed first (step 2) — done 2026-10-26 (migration 0007)
+
+Result: `listings.image_url` (all adapters), views `card_images` (401 > Trinity > Fusion) and `set_names`; cards fill a
+missing set name from a later store; PSR / ESR abbreviations, and a title abbreviation that narrows the tagged
+rarity wins (Fusion "(ESR) ... Secret Rare" now matches 401's Emblazoned Secret Rare). Visit links and "last
+updated" need no schema change: `stores.base_url + '/products/' + listings.url_name`, newest ok `scrape_runs`.
 
 1. **Set names for every card**: Fusion has none; fill from Trinity / 401 via the shared set code
    (`set_code` -> most common `set_name`).

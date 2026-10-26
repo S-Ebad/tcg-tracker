@@ -149,6 +149,12 @@ def test_every_real_variant_has_an_edition(real_crawl):
     assert mixed == 1954
 
 
+def test_images_are_absolute_https_links(real_crawl):
+    urls = [parse_item(r).image_url for r in real_crawl]
+    assert sum(u is not None for u in urls) == 11709
+    assert all(u.startswith("https://cdn.shopify.com/") for u in urls if u)
+
+
 def test_real_crawl_problem_breakdown(real_crawl):
     recs = [parse_item(r) for r in real_crawl]
     kinds = Counter(p.split(":")[0] for r in recs for p in r.problems)

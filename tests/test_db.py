@@ -164,6 +164,26 @@ def test_best_prices_are_per_card_edition_and_condition(conn, store):
     assert conn.execute("SELECT count(*) FROM cards").fetchone() == (1,)
 
 
+def test_set_name_is_filled_by_a_later_store_and_card_image_prefers_401(conn, store):
+    from parser import CardRec, VariantRec
+
+    def rec(pid, set_name, image):
+        return CardRec(pid, f"p{pid}", "Therion Cross", "DIFO", "EN", "DIFO-EN070", set_name, "Super Rare", None,
+                       "DIFO-EN070|super-rare|base", [VariantRec(pid * 10, None, "NM", "1st Edition", 1.0, None, True)],
+                       [], title="Therion Cross", image_url=image)
+
+    fusion = db.ensure_store(conn, "fusion", "Fusion Gaming", "https://fusiongamingonline.com")
+    g401 = db.ensure_store(conn, "401games", "401 Games", "https://store.401games.ca")
+    for st, r in ((fusion, rec(1, None, "https://cdn/fusion.jpg")), (store, rec(2, "Dimension Force", "https://cdn/t.jpg")),
+                  (g401, rec(3, "Dimension Force", "https://cdn/401.jpg"))):
+        run = db.start_run(conn, st)
+        with conn.transaction():
+            db.save_items(conn, st, run, [(r, {"id": r.product_id})])
+    assert conn.execute("SELECT set_name FROM cards").fetchone() == ("Dimension Force",)
+    assert conn.execute("SELECT set_name FROM set_names WHERE set_code='DIFO'").fetchone() == ("Dimension Force",)
+    assert conn.execute("SELECT image_url, store FROM card_images").fetchall() == [("https://cdn/401.jpg", "401games")]
+
+
 def test_store_config_round_trip_and_age(conn, store):
     assert db.get_store_config(conn, store, "usf") is None
     db.set_store_config(conn, store, "usf", {"api_key": "a"})

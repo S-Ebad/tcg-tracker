@@ -10,7 +10,8 @@ MIN_RATIO = 0.9
 # (was ~3 queries per variant: 60s for the 62,710-variant fixture, now a handful per batch).
 _STAGE_DDL = """
 CREATE TEMP TABLE IF NOT EXISTS stage_listings (
-    source_product_id bigint, card_key text, url_name text, title_raw text, problems text[], raw jsonb);
+    source_product_id bigint, card_key text, url_name text, title_raw text, problems text[], raw jsonb,
+    image_url text);
 CREATE TEMP TABLE IF NOT EXISTS stage_variants (
     source_product_id bigint, source_variant_id bigint, sku text, condition text, edition text,
     price numeric(10,2), quantity integer, in_stock boolean);
@@ -18,12 +19,14 @@ TRUNCATE stage_listings, stage_variants;
 """
 
 _UPSERT_LISTINGS = """
-INSERT INTO listings (store_id, source_product_id, card_key, url_name, title_raw, problems, in_stock, last_run_id, raw)
-SELECT %(store)s, source_product_id, card_key, url_name, title_raw, problems, true, %(run)s, raw FROM stage_listings
+INSERT INTO listings (store_id, source_product_id, card_key, url_name, title_raw, problems, in_stock, last_run_id, raw,
+                      image_url)
+SELECT %(store)s, source_product_id, card_key, url_name, title_raw, problems, true, %(run)s, raw, image_url
+FROM stage_listings
 ON CONFLICT (store_id, source_product_id) DO UPDATE SET
    card_key = EXCLUDED.card_key, url_name = EXCLUDED.url_name, title_raw = EXCLUDED.title_raw,
    problems = EXCLUDED.problems, in_stock = true, last_seen = now(),
-   last_run_id = EXCLUDED.last_run_id, raw = EXCLUDED.raw
+   last_run_id = EXCLUDED.last_run_id, raw = EXCLUDED.raw, image_url = EXCLUDED.image_url
 """
 
 # One statement so `old` reads the pre-update values: a history row only when something observable changed
@@ -87,19 +90,23 @@ def save_items(conn, store_id, run_id, pairs):
     conn.execute(_STAGE_DDL)
     cards = {}
     for rec, _ in latest.values():
-        if rec.card_key:
-            cards.setdefault(rec.card_key, (rec.card_key, rec.set_code, rec.card_number, rec.name, rec.set_name,
-                                            rec.rarity, rec.art_label))
+        # keep the first copy of each card, but prefer one that knows its set name
+        if rec.card_key and (rec.card_key not in cards or (cards[rec.card_key][4] is None and rec.set_name)):
+            cards[rec.card_key] = (rec.card_key, rec.set_code, rec.card_number, rec.name, rec.set_name,
+                                   rec.rarity, rec.art_label)
     with conn.cursor() as cur:
         if cards:
+            # a card first seen at a store without set names (Fusion) gets one when another store has it
             cur.executemany(
                 """INSERT INTO cards (card_key,set_code,card_number,name,set_name,rarity,art_label)
-                   VALUES (%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (card_key) DO NOTHING""", list(cards.values()))
-        with cur.copy("COPY stage_listings (source_product_id, card_key, url_name, title_raw, problems, raw)"
-                      " FROM STDIN") as cp:
+                   VALUES (%s,%s,%s,%s,%s,%s,%s)
+                   ON CONFLICT (card_key) DO UPDATE SET set_name = EXCLUDED.set_name
+                   WHERE cards.set_name IS NULL AND EXCLUDED.set_name IS NOT NULL""", list(cards.values()))
+        with cur.copy("COPY stage_listings (source_product_id, card_key, url_name, title_raw, problems, raw,"
+                      " image_url) FROM STDIN") as cp:
             for rec, raw in latest.values():
                 cp.write_row((rec.product_id, rec.card_key, rec.url_name, rec.title or raw.get("title", ""),
-                              rec.problems, Jsonb(raw)))
+                              rec.problems, Jsonb(raw), rec.image_url))
         with cur.copy("COPY stage_variants (source_product_id, source_variant_id, sku, condition, edition, price,"
                       " quantity, in_stock) FROM STDIN") as cp:
             for rec, _ in latest.values():

@@ -213,7 +213,7 @@ Alerts always go to the log and to `scrape_runs.alerts`. Set `ALERT_DISCORD_WEBH
 ## Tests
 
 ```bash
-pytest                    # 174 tests, about 13 minutes (end-to-end crawls of three stores)
+pytest                    # 181 tests, about 10 minutes (end-to-end crawls of three stores)
 ruff check .
 ```
 

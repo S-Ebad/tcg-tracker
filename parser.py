@@ -30,7 +30,8 @@ RARITY_ABBR = {"UR": "Ultra Rare", "SR": "Super Rare", "SCR": "Secret Rare", "R"
                "C": "Common", "CR": "Collector's Rare", "UTR": "Ultimate Rare", "GR": "Gold Rare",
                "PS": "Platinum Secret Rare", "QCSR": "Quarter Century Secret Rare",
                # seen at 401 Games: "Dominus Impulse (PCR) - RA05-EN080 - Prismatic Collector's Rare - 1st Edition"
-               "PCR": "Prismatic Collector's Rare", "PUR": "Prismatic Ultimate Rare", "EUR": "Emblazoned Ultra Rare"}
+               "PCR": "Prismatic Collector's Rare", "PUR": "Prismatic Ultimate Rare", "EUR": "Emblazoned Ultra Rare",
+               "PSR": "Prismatic Secret Rare", "ESR": "Emblazoned Secret Rare"}
 PAREN_RE = re.compile(r"\(([^()]*)\)")
 # Graded slabs ("... Ultra Rare - PSA 7") are a different product from raw copies: quarantined, never keyed.
 GRADE_RE = re.compile(r"\b(PSA|BGS|CGC|SGC|Beckett)\s*(10|[1-9](?:\.5)?)\b")
@@ -68,6 +69,7 @@ class CardRec:
     variants: list[VariantRec] = field(default_factory=list)
     problems: list[str] = field(default_factory=list)
     title: str = ""            # the store's product title as received (listings.title_raw)
+    image_url: str | None = None  # the store's product image (absolute https URL)
 
 
 def _split_condition(label: str):
@@ -110,6 +112,16 @@ def _rarity_from_title(parens: list[str]) -> str | None:
     return None
 
 
+def _more_specific_rarity(rarity: str | None, parens: list[str]) -> str | None:
+    """A title abbreviation that narrows the tagged rarity wins: Fusion tags "Garunix Eternity (ESR) [25LP-EN003]"
+    only "Secret Rare", while ESR = Emblazoned Secret Rare (what 401 calls it). Never overrides a different rarity."""
+    for p in parens:
+        full = RARITY_ABBR.get(p)
+        if full and rarity and full != rarity and full.lower().endswith(" " + rarity.lower()):
+            return full
+    return rarity
+
+
 def _rarity_from_title_suffix(title: str) -> str | None:
     """Rarity printed after the code: "[HAC1-EN026] Common" or "[PHRE-EN039] - Phantom Revenge ... - Ultra Rare".
 
@@ -134,6 +146,18 @@ def art_label_from(parens: list[str], rarity: str | None) -> str | None:
            if p.lower() != rar_l and not rar_l.startswith(p.lower() + " ")
            and p not in RARITY_ABBR and "rare" not in p.lower()]
     return "; ".join(art) or None
+
+
+def https_url(url: str | None) -> str | None:
+    """Store image links come as "//cdn.shopify.com/..." or full URLs; always return an absolute https URL."""
+    if not url:
+        return None
+    return "https:" + url if url.startswith("//") else url
+
+
+def _first_image(item: dict) -> str | None:
+    images = item.get("images") or []
+    return https_url(images[0].get("url")) if images and isinstance(images[0], dict) else None
 
 
 def make_card_key(card_number: str | None, rarity: str | None, art_label: str | None) -> str | None:
@@ -164,6 +188,7 @@ def parse_item(item: dict) -> CardRec:
     parens = _title_parens(title)
     # most specific first: tags, then a parenthetical, then the text printed after the code
     rarity = _rarity(tags) or _rarity_from_title(parens) or _rarity_from_title_suffix(title)
+    rarity = _more_specific_rarity(rarity, parens)
     if not rarity:
         probs.append("no_rarity")
     graded = GRADE_RE.search(title)
@@ -209,4 +234,4 @@ def parse_item(item: dict) -> CardRec:
     key = None if graded or not m else make_card_key(f"{set_code}-{lang}{number}", rarity, art_label)
     return CardRec(item["id"], item.get("urlName", ""), name, set_code, lang,
                    f"{set_code}-{lang}{number}" if m else None, set_name, rarity, art_label, key,
-                   variants, probs, title=title)
+                   variants, probs, title=title, image_url=_first_image(item))

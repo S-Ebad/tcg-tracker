@@ -19,6 +19,7 @@ from parser import (
     VariantRec,
     _is_rarity_text,
     art_label_from,
+    https_url,
     make_card_key,
 )
 
@@ -129,4 +130,5 @@ def parse_item(item: dict) -> CardRec:
         key = make_card_key(f"{set_code}-{lang}{number}", rarity, art_label_from(parens, rarity))
     return CardRec(int(item["id"]), (item.get("u") or "").removeprefix("/products/"), name, set_code, lang,
                    f"{set_code}-{lang}{number}" if code_i is not None else None, set_name, rarity,
-                   art_label_from(parens, rarity), key, variants, probs, title=title)
+                   art_label_from(parens, rarity), key, variants, probs, title=title,
+                   image_url=https_url(item.get("t")))
