@@ -8,6 +8,7 @@ from scrapy import signals
 
 import db
 from parser import parse_item
+from tcg_tracker.monitoring import FieldStats, run_finished
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +22,7 @@ class PostgresPipeline:
         self.buffer: list[tuple] = []
         self.saved = 0
         self.with_problems = 0
+        self.field_stats = FieldStats()
         self.db_error: str | None = None
         self.conn = None
 
@@ -55,6 +57,7 @@ class PostgresPipeline:
         if rec.problems:
             self.with_problems += 1
             self.stats.inc_value("tcg/items_with_problems")
+        self.field_stats.add(rec)
         self.buffer.append((rec, raw))
         if len(self.buffer) >= self.batch_size:
             self._flush()
@@ -82,13 +85,17 @@ class PostgresPipeline:
         if self.conn is None:
             return
         error = self.db_error or spider.verdict(reason)
+        field_stats = self.field_stats.as_dict()
         try:
             with self.conn.transaction():
                 status, notes = db.finish_run(self.conn, self.store_id, self.run_id, self.saved,
-                                              self.with_problems, error=error)
+                                              self.with_problems, error=error, field_stats=field_stats)
         finally:
             self.conn.close()
         self.stats.set_value("tcg/run_status", status)
         log = logger.info if status == "ok" else logger.error
         log("scrape run %s finished: %s (%s items, %s with problems)%s", self.run_id, status, self.saved,
             self.with_problems, f" - {notes}" if notes else "")
+        self.crawler.signals.send_catch_log(
+            run_finished, run_id=self.run_id, store_id=self.store_id, status=status, notes=notes,
+            items_seen=self.saved, items_with_problems=self.with_problems, field_stats=field_stats)

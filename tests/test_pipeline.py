@@ -29,8 +29,9 @@ def calls(monkeypatch):
     monkeypatch.setattr(pl.db, "save_items",
                         lambda conn, store_id, run_id, pairs: rec.saved.extend(r.product_id for r, _ in pairs))
 
-    def finish(conn, store_id, run_id, seen, problems, error=None):
+    def finish(conn, store_id, run_id, seen, problems, error=None, field_stats=None):
         rec.finished = (seen, problems, error)
+        rec.field_stats = field_stats
         return ("failed" if error else "ok"), error
 
     monkeypatch.setattr(pl.db, "finish_run", finish)
@@ -60,6 +61,21 @@ def test_items_are_saved_in_batches_and_run_finishes_ok(calls):
     spider.total, spider.seen_ids = 5, set(range(5))
     p.spider_closed(spider, "finished")
     assert calls.saved == [0, 1, 2, 3, 4] and calls.finished == (5, 0, None) and p.conn.closed
+    assert calls.field_stats["n_listings"] == 5 and calls.field_stats["card_key"] == 0.0
+
+
+def test_run_finished_signal_carries_the_run(calls):
+    from tcg_tracker.monitoring import run_finished
+
+    p, spider = make_pipeline()
+    got = []
+    p.crawler.signals.connect(lambda **kw: got.append(kw), signal=run_finished, weak=False)
+    p.open_spider()
+    p.process_item({"raw": raw(1)})
+    p.close_spider()
+    spider.total, spider.seen_ids = 1, {1}
+    p.spider_closed(spider, "finished")
+    assert got and got[0]["run_id"] == 7 and got[0]["status"] == "ok" and got[0]["items_seen"] == 1
 
 
 def test_incomplete_crawl_is_reported_as_failed(calls):

@@ -119,10 +119,11 @@ def save_item(conn, store_id, run_id, rec, raw):
     save_items(conn, store_id, run_id, [(rec, raw)])
 
 
-def finish_run(conn, store_id, run_id, items_seen, items_with_problems, error=None):
+def finish_run(conn, store_id, run_id, items_seen, items_with_problems, error=None, field_stats=None):
     """Close the run. Only a trustworthy run is allowed to mark missing cards out of stock.
 
     error: set by the caller when the crawl itself was incomplete (paging stopped, count mismatch, DB error).
+    field_stats: NULL share per parsed field (monitoring.FieldStats), stored for comparison with later runs.
     Every variant marked out of stock gets a price_history row with source='missing'.
     """
     prev = conn.execute(
@@ -151,6 +152,7 @@ def finish_run(conn, store_id, run_id, items_seen, items_with_problems, error=No
                SELECT id, price, quantity, false, 'missing' FROM gone ON CONFLICT DO NOTHING""",
             (store_id, run_id)).rowcount
     conn.execute("""UPDATE scrape_runs SET finished_at=now(), status=%s, items_seen=%s, items_with_problems=%s,
-                        notes=%s, listings_marked_out=%s, variants_marked_out=%s WHERE id=%s""",
-                 (status, items_seen, items_with_problems, notes, listings_out, variants_out, run_id))
+                        notes=%s, listings_marked_out=%s, variants_marked_out=%s, field_stats=%s WHERE id=%s""",
+                 (status, items_seen, items_with_problems, notes, listings_out, variants_out,
+                  Jsonb(field_stats) if field_stats is not None else None, run_id))
     return status, notes

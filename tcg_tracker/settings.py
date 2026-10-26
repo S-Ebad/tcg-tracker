@@ -41,6 +41,23 @@ TRINITY_API_KEY_MAX_AGE_DAYS = 7
 TRINITY_MAX_PAGES = 100
 TRINITY_COUNT_TOLERANCE = 0.005  # fail the run if the item count is off data.total by more than 0.5%
 
+# Monitoring (tcg_tracker/monitoring.py). Alerts always go to the log and scrape_runs.alerts; Discord and email are
+# used when configured.
+EXTENSIONS = {"tcg_tracker.monitoring.RunMonitor": 500}
+MONITOR_ENABLED = os.environ.get("MONITOR_ENABLED", "1") != "0"
+MONITOR_MIN_ITEM_RATIO = 0.9        # items_seen vs the last good run
+MONITOR_MAX_PROBLEM_RATE = 0.02     # share of items with parse problems (real crawl: 0.65%)
+MONITOR_NULL_RATE_JUMP = 0.02       # absolute rise in a field's NULL share vs the last good run
+MONITOR_MAX_HTTP_ERROR_RATE = 0.05  # non-2xx responses + download exceptions / all downloads
+ALERT_DISCORD_WEBHOOK_URL = os.environ.get("ALERT_DISCORD_WEBHOOK_URL", "")
+ALERT_EMAIL_TO = os.environ.get("ALERT_EMAIL_TO", "")
+ALERT_EMAIL_FROM = os.environ.get("ALERT_EMAIL_FROM", "")
+SMTP_HOST = os.environ.get("SMTP_HOST", "")
+SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))
+SMTP_USER = os.environ.get("SMTP_USER", "")
+SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
+SMTP_STARTTLS = os.environ.get("SMTP_STARTTLS", "1") != "0"
+
 TWISTED_REACTOR = "twisted.internet.asyncioreactor.AsyncioSelectorReactor"
 FEED_EXPORT_ENCODING = "utf-8"
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
