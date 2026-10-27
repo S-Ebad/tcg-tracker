@@ -99,6 +99,8 @@ export const getSets = () => get<SetSummary[]>("/api/sets");
 export const getDeals = (params: Params = {}) => get<Deal[]>("/api/deals", params);
 export const getCard = (key: string) => get<CardDetail | null>(`/api/cards/${encodeURIComponent(key)}`);
 export const getHistory = (key: string) => get<HistorySeries[]>(`/api/cards/${encodeURIComponent(key)}/history`);
-export const searchPrintings = (params: Params) => get<{ total: number; items: Printing[] }>("/api/search", params);
+export const getSetPrintings = (code: string, params: Params) =>
+  get<{ total: number; items: Printing[] }>(`/api/sets/${encodeURIComponent(code)}`, params);
+export const searchPrintings =(params: Params) => get<{ total: number; items: Printing[] }>("/api/search", params);
 
 export { cad, cardHref, CONDITION_NAMES, imageSrc } from "@/lib/format";
