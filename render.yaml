@@ -1,0 +1,20 @@
+# Render Blueprint for the read-only API (Render dashboard: New > Blueprint, pick this repo).
+# Free plan: the service sleeps after 15 minutes without traffic, so the first request after that takes ~30-60 s.
+# Values marked sync: false are asked for in the dashboard and never stored in the repo.
+services:
+  - type: web
+    name: card-scout-api
+    runtime: python
+    plan: free
+    region: ohio            # same region as the Neon database
+    branch: main
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn api.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/stores
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.8"
+      - key: DATABASE_URL     # the Neon connection string
+        sync: false
+      - key: TCG_CONTACT_EMAIL  # User-Agent contact for card image downloads
+        sync: false
