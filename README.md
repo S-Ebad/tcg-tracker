@@ -2,6 +2,8 @@
 
 **Find the cheapest copy of any Yu-Gi-Oh! single across Canadian stores.**
 
+**Live: https://card-scout-silk.vercel.app**
+
 Canadian players compare prices by opening five store tabs and searching each one. Card Scout CA does that for
 them: it checks every in-stock Yu-Gi-Oh! single at Canadian stores twice a day, matches the same printing across
 stores, and shows who's cheapest for each edition and condition, with price history and a link to buy on the store's
@@ -29,6 +31,11 @@ Built by [kiunga400-hub](https://github.com/kiunga400-hub).
   `Retry-After` honoured, a contact address in the User-Agent. Rate limits are respected, never worked around.
 
 **Stack:** Python, Scrapy, PostgreSQL, FastAPI · Next.js 16, React, Tailwind CSS, shadcn/ui, Recharts · GitHub Actions.
+
+**Hosting ($0):** crawls run on GitHub Actions twice a day (`.github/workflows/crawl.yml`) into a Neon Postgres
+database; the API runs on Render (`render.yaml`, free plan: it sleeps when idle, so the first request after a quiet
+spell takes ~30-50 s) and the website on Vercel. A daily freshness check (`freshness.yml`) alerts on Discord if a
+store's crawls stop.
 
 ### How it was built
 
@@ -369,5 +376,6 @@ Shopify store whose collection is under 25,000 products, subclass `FusionSpider`
 - **13 card keys are shared by two listings** of the same card at Trinity. Allowed: the view picks the cheaper.
 - **The store page is rate-limited** (429). Runs normally don't need it (cached key); after 7 days the spider tries
   it again and falls back to the cached key if it's still blocked.
-- **Everything runs on one PC.** Crawls, the freshness check and alerts only happen while it's on (missed times run
-  when it's back). If the PC is off for days, nothing can tell you; the freshness check alerts once it's back on.
+- **Free hosting limits.** The Render API sleeps after 15 idle minutes (slow first visit); Neon's free plan has 1 GB
+  (183 MB used on 2026-10-27). `scripts/scheduled.py` and the Windows Task Scheduler setup remain for running
+  everything on one PC instead.
