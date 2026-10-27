@@ -7,10 +7,12 @@ Stores (prices in CAD, in-stock Yu-Gi-Oh singles only):
 |---|---|---|---|
 | **Trinity Hobby** (trinityhobby.com) | `trinity` | Hotyon "USF" search API | ~11,800 listings, 59 requests |
 | **401 Games** (store.401games.ca, Toronto) | `401games` | Fast Simon search API | ~35,000 listings, 141 requests |
-| **Fusion Gaming** (fusiongamingonline.com) | `fusion` | Shopify `products.json` | ~13,800 listings, 58 requests — slow: Shopify rate-limits us (429), so 15 s pacing, capped at 100 min |
+| **Hobbiesville** (hobbiesville.com, Ottawa/Toronto) | `hobbiesville` | Shopify `products.json` | ~4,200 listings, 18 requests, ~2 minutes at 5 s pacing |
+| **Fusion Gaming** (fusiongamingonline.com) | `fusion` | Shopify `products.json` | ~13,800 listings, 58 requests. **Not scheduled**: Shopify answered it with 429 at every pace we tried; the spider stays for manual runs |
 
 Cards line up across stores on the same `card_key`: Trinity–401 share ~9,000, 401–Fusion ~11,500,
-Trinity–Fusion ~4,200, and ~3,700 cards are at all three.
+Trinity–Fusion ~4,200, and ~3,700 cards are at all three. Hobbiesville shares ~2,760 in-stock cards with 401 and
+~1,830 with Trinity; ~1,380 are at all three scheduled stores (Trinity, 401, Hobbiesville).
 
 Built with Scrapy and PostgreSQL. Priorities: reliable data, loud failures, tests on real data.
 
@@ -132,6 +134,8 @@ job-level alerts (backup, freshness, crashes) keep using `ALERT_DISCORD_WEBHOOK_
 | `parser.py` | Shared card identity (`CardRec`, `VariantRec`, `make_card_key`, art labels, grading) and Trinity's adapter |
 | `adapter_401.py` | 401 Games' adapter: one Fast Simon item -> `CardRec` using the shared rules |
 | `adapter_fusion.py` | Fusion Gaming's adapter: reshapes a Shopify product and reuses Trinity's parser (same BinderPOS conventions) |
+| `adapter_hobbiesville.py` | Hobbiesville's adapter: card number, rarity, edition and set from structured `Key:Value` tags |
+| `tcg_tracker/spiders/fusion.py`, `hobbiesville.py` | Shopify `products.json` crawl; Hobbiesville subclasses Fusion's spider with its own URL and settings |
 | `db.py` | Batched upserts (COPY into staging tables + set-based SQL), price history, closing a run |
 | `tcg_tracker/pipelines.py` | Glue: parse, save in transactions of 500, finish the run, tell the monitor |
 | `tcg_tracker/monitoring.py` | Checks every run and sends alerts |
@@ -236,7 +240,7 @@ Alerts always go to the log and to `scrape_runs.alerts`. Set `ALERT_DISCORD_WEBH
 ## Tests
 
 ```bash
-pytest                    # 194 tests, about 11 minutes (end-to-end crawls of three stores)
+pytest                    # 215 tests, about 11 minutes (end-to-end crawls of three stores)
 ruff check .
 ```
 
@@ -253,7 +257,8 @@ ruff check .
 
 Ask first (see `CLAUDE.md`): each store is a commitment to keep its scraper working.
 
-401 Games was added this way; `adapter_401.py` and `tcg_tracker/spiders/games401.py` are the template.
+401 Games was added this way; `adapter_401.py` and `tcg_tracker/spiders/games401.py` are the template. For another
+Shopify store whose collection is under 25,000 products, subclass `FusionSpider` like `hobbiesville.py` does.
 
 1. **Permission and rules.** Shopify stores' terms forbid scraping without written permission: have it first. Then
    check robots.txt and `agents.md`. See `docs/second-store-research.md` for how candidates were compared.
@@ -280,6 +285,12 @@ Ask first (see `CLAUDE.md`): each store is a commitment to keep its scraper work
 - **Fusion Gaming has no set names** (`set_name` NULL): the set is one of ~680 mixed tags and isn't guessed; the
   set code in the card number identifies it. Its products.json `products_count` includes ~0.3% the feed doesn't
   list, so its count tolerance is 1%. Like 401, no stock counts (`available` only).
+- **Shopify rate-limits bots by network, across stores.** On 2026-10-26 an evening of Fusion retries got the home
+  connection 429'd at Hobbiesville too, while a crawl from another network got straight through. Keep Shopify
+  traffic small (Fusion is off the schedule); the legitimate way past the limit is a Shopify crawler access key from
+  the store owner, not disguised or rotated traffic.
+- **Hobbiesville lists sold-out products** (69 with every condition unavailable): they're stored out of stock. Old
+  codes like `MRL-E130` (no two-letter language) are quarantined, as everywhere.
 - **Duel Terminal wording differs between stores**: Fusion's "(Duel Terminal) ... Parallel Rare" (40 cards) doesn't
   say which Duel Terminal rarity it is, so it doesn't match Trinity's "Duel Terminal Technology Ultra Rare" etc.
 - **A 401 crawl takes ~25 minutes** (Fast Simon answers slowly, 5–15 s per page at times); Trinity takes ~1 minute.
