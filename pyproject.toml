@@ -11,7 +11,8 @@ dependencies = [
     "psycopg-pool>=3.2",
 ]
 
-[project.optional-dependencies]
+# Dev tools; uv installs this group by default on `uv sync`
+[dependency-groups]
 dev = [
     "pytest>=8",
     "ruff>=0.6",

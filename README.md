@@ -88,6 +88,16 @@ python migrate.py                                     # applies migrations/NNNN_
 scrapy crawl trinity                                  # one full crawl, about a minute
 ```
 
+**With [uv](https://docs.astral.sh/uv/):** `uv sync` replaces the venv and pip steps (it installs the dev group and
+uses `uv.lock`), then prefix commands with `uv run`:
+
+```bash
+uv sync                                               # creates .venv from uv.lock
+uv run python migrate.py
+uv run scrapy crawl trinity
+uv run pytest
+```
+
 `.env` must be loaded into the environment before running (`set -a; . ./.env; set +a` in bash).
 A crawl needs `TCG_CONTACT_EMAIL`: it goes in the User-Agent so the site owner can reach us.
 
