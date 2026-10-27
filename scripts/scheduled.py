@@ -22,7 +22,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-SPIDERS = ["trinity", "401games", "fusion"]
+# fusion is not scheduled: Shopify answers it with 429 at any pace (2026-10-26); its spider stays for manual runs
+SPIDERS = ["trinity", "401games", "hobbiesville"]
 PG_BIN = ROOT / ".tools" / "pg" / "Library" / "bin"   # conda-forge Postgres; skipped when absent (Docker)
 PG_DATA = ROOT / ".tools" / "pgdata"
 LOG_DIR = ROOT / "logs"

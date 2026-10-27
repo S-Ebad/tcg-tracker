@@ -73,6 +73,10 @@ GAMES401_COUNT_TOLERANCE = 0.02     # index drift skips ~0.7% per crawl; misses_
 FUSION_MAX_PAGES = 100            # 56 pages of 250 on 2026-10-26
 FUSION_COUNT_TOLERANCE = 0.01     # products_count includes ~0.3% the feed doesn't list
 
+# Hobbiesville (Shopify products.json, same crawl as Fusion)
+HOBBIESVILLE_MAX_PAGES = 60        # 17 pages of 250 on 2026-10-26
+HOBBIESVILLE_COUNT_TOLERANCE = 0.01  # products_count 4,239 vs 4,233 listed (0.14%)
+
 TWISTED_REACTOR = "twisted.internet.asyncioreactor.AsyncioSelectorReactor"
 FEED_EXPORT_ENCODING = "utf-8"
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")

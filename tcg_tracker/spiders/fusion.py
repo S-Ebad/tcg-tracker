@@ -25,6 +25,8 @@ PAGE_SIZE = 250
 class FusionSpider(scrapy.Spider):
     name = "fusion"
     store = STORE
+    collection = COLLECTION
+    setting_prefix = "FUSION"  # FUSION_MAX_PAGES, FUSION_COUNT_TOLERANCE
     adapter = staticmethod(adapter_fusion.parse_item)  # Shopify product -> CardRec
     # Shopify answers bots on the store domain with 429 + Retry-After 60 (2026-10-26). Fixed slow pacing (15 s between
     # requests) and ~15 minutes of honouring Retry-After per page. The adaptive delay (middlewares.
@@ -48,7 +50,7 @@ class FusionSpider(scrapy.Spider):
     async def start(self):
         if not self._settings.get("CONTACT_EMAIL"):
             raise CloseSpider("TCG_CONTACT_EMAIL is not set; the User-Agent must carry a contact address")
-        yield scrapy.Request(f"{COLLECTION}.json", callback=self.parse_collection, errback=self.request_failed)
+        yield scrapy.Request(f"{self.collection}.json", callback=self.parse_collection, errback=self.request_failed)
 
     def parse_collection(self, response):
         try:
@@ -58,8 +60,8 @@ class FusionSpider(scrapy.Spider):
         yield self.page_request(1)
 
     def page_request(self, page: int) -> scrapy.Request:
-        return scrapy.Request(f"{COLLECTION}/products.json?limit={PAGE_SIZE}&page={page}", callback=self.parse_page,
-                              errback=self.request_failed, cb_kwargs={"page": page})
+        return scrapy.Request(f"{self.collection}/products.json?limit={PAGE_SIZE}&page={page}",
+                              callback=self.parse_page, errback=self.request_failed, cb_kwargs={"page": page})
 
     def parse_page(self, response, page: int):
         try:
@@ -69,13 +71,13 @@ class FusionSpider(scrapy.Spider):
         self.pages += 1
         for p in products:
             if p.get("id") in self.seen_ids:
-                self.crawler.stats.inc_value("fusion/duplicate_ids")
+                self.crawler.stats.inc_value(f"{self.name}/duplicate_ids")
                 continue
             self.seen_ids.add(p.get("id"))
             yield {"raw": p}
         if not products:
             return  # the end; the count check in verdict() catches an early stop
-        if page >= self._settings.getint("FUSION_MAX_PAGES", 100):
+        if page >= self._settings.getint(f"{self.setting_prefix}_MAX_PAGES", 100):
             self._fail(f"more than {page} pages: the collection grew past what the spider expects")
         yield self.page_request(page + 1)
 
@@ -93,4 +95,5 @@ class FusionSpider(scrapy.Spider):
             return self.failure
         if close_reason != "finished":
             return f"spider closed early: {close_reason}"
-        return count_problem(len(self.seen_ids), self.total, self._settings.getfloat("FUSION_COUNT_TOLERANCE", 0.01))
+        tolerance = self._settings.getfloat(f"{self.setting_prefix}_COUNT_TOLERANCE", 0.01)
+        return count_problem(len(self.seen_ids), self.total, tolerance)
