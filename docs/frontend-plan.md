@@ -5,7 +5,7 @@ Status: draft for review, 2026-10-26. Based on the mockups agreed in chat.
 ## Goal
 
 A public demo where anyone in Canada can find the cheapest copy of a Yu-Gi-Oh! single across Trinity Hobby,
-401 Games and Fusion Gaming, see it per edition and condition, and click through to the store.
+401 Games and Hobbiesville (Fusion Gaming was replaced on 2026-10-26), see it per edition and condition, and click through to the store.
 
 ## Stack
 
@@ -128,7 +128,10 @@ updated" need no schema change: `stores.base_url + '/products/' + listings.url_n
 1. This plan (review)
 2. Data work above, with tests
 3. API with tests (against the test database), browsable at `/docs` — done 2026-10-26 (`api/`, 13 tests)
-4. Next.js app: layout + header/footer -> home -> search -> set page -> card page -> deals -> stores
+4. Next.js app: layout + header/footer -> home -> search -> set page -> card page -> deals -> stores.
+   Started 2026-10-26 in `web/` (Next.js 16, cache components): layout, header/footer, home and search done.
+   The API only shows stores with a good crawl in the last 72 h (`API_MAX_DATA_AGE_HOURS`), so a store whose
+   crawls fail drops off the site instead of showing stale prices.
 5. Docker (Postgres, crawlers + schedule, API, website) and hosting
 
 ## Out of scope for the demo

@@ -5,6 +5,7 @@ Offers are in-stock variants of in-stock listings with a card_key; prices in CAD
 """
 from __future__ import annotations
 
+import os
 import re
 
 from psycopg.rows import dict_row
@@ -12,11 +13,19 @@ from psycopg.rows import dict_row
 CONDITION_ORDER = ["NM", "LP", "MP", "PL", "HP", "DMG"]
 EDITION_ORDER = ["1st Edition", "Unlimited", "Limited"]
 
-# in-stock offers per card, optionally from one store
-_OFFERS = """
+# A store is shown only while its data is fresh: a good (complete) crawl in the last API_MAX_DATA_AGE_HOURS. A store
+# whose crawls keep failing (Fusion, 2026-10-26: partial runs saved 2,741 listings but never finished) or that was
+# taken off the schedule drops off the site instead of showing stale or partial prices.
+MAX_DATA_AGE_HOURS = int(os.environ.get("API_MAX_DATA_AGE_HOURS", "72"))
+_LIVE_STORE = f"""EXISTS (SELECT 1 FROM scrape_runs r WHERE r.store_id = s.id AND r.status = 'ok'
+                          AND r.finished_at > now() - interval '{MAX_DATA_AGE_HOURS} hours')"""
+
+# in-stock offers per card from live stores, optionally from one store
+_OFFERS = f"""
 SELECT l.card_key, s.slug AS store, v.price
 FROM variants v JOIN listings l ON l.id = v.listing_id JOIN stores s ON s.id = l.store_id
-WHERE v.in_stock AND l.in_stock AND l.card_key IS NOT NULL AND (%(store)s::text IS NULL OR s.slug = %(store)s)
+WHERE v.in_stock AND l.in_stock AND l.card_key IS NOT NULL AND {_LIVE_STORE}
+  AND (%(store)s::text IS NULL OR s.slug = %(store)s)
 """
 
 PRINTING_SORTS = {
@@ -82,11 +91,11 @@ def card(conn, card_key: str) -> dict | None:
         if not info:
             return None
         offers = cur.execute(
-            """SELECT s.slug AS store, s.name AS store_name, v.edition, v.condition, v.price::float AS price,
+            f"""SELECT s.slug AS store, s.name AS store_name, v.edition, v.condition, v.price::float AS price,
                       v.quantity, v.in_stock AND l.in_stock AS in_stock,
                       s.base_url || '/products/' || l.url_name AS url, v.last_seen
                FROM variants v JOIN listings l ON l.id = v.listing_id JOIN stores s ON s.id = l.store_id
-               WHERE l.card_key = %(k)s
+               WHERE l.card_key = %(k)s AND {_LIVE_STORE}
                ORDER BY coalesce(array_position(%(eds)s, v.edition), 9),
                         coalesce(array_position(%(conds)s, v.condition), 9), v.price""",
             {"k": card_key, "eds": EDITION_ORDER, "conds": CONDITION_ORDER}).fetchall()
@@ -149,7 +158,7 @@ def deals(conn, *, condition: str = "NM", min_price: float = 5.0, store: str | N
                     SELECT l.card_key, v.edition, v.condition, s.slug, min(v.price) AS price
                     FROM variants v JOIN listings l ON l.id = v.listing_id JOIN stores s ON s.id = l.store_id
                     WHERE v.in_stock AND l.in_stock AND l.card_key IS NOT NULL AND v.edition IS NOT NULL
-                      AND v.condition = %(cond)s
+                      AND v.condition = %(cond)s AND {_LIVE_STORE}
                     GROUP BY 1, 2, 3, 4),
                 spread AS (
                     SELECT card_key, edition, condition, min(price) AS low, max(price) AS high,
@@ -171,14 +180,14 @@ def deals(conn, *, condition: str = "NM", min_price: float = 5.0, store: str | N
 
 
 def stores(conn) -> list[dict]:
-    """Each store with its newest good crawl and how many listings are in stock."""
+    """Each live store with its newest good crawl and how many listings are in stock."""
     with conn.cursor(row_factory=dict_row) as cur:
         return cur.execute(
-            """SELECT s.slug, s.name, s.base_url,
+            f"""SELECT s.slug, s.name, s.base_url,
                       (SELECT max(finished_at) FROM scrape_runs r WHERE r.store_id = s.id AND r.status = 'ok')
                           AS last_updated,
                       (SELECT count(*) FROM listings l WHERE l.store_id = s.id AND l.in_stock) AS listings_in_stock
-               FROM stores s ORDER BY s.name""").fetchall()
+               FROM stores s WHERE {_LIVE_STORE} ORDER BY s.name""").fetchall()
 
 
 def image_url(conn, card_key: str) -> str | None:

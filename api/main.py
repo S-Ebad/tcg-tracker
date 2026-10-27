@@ -52,7 +52,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="tcg-tracker API", version="0.1",
-              description="Canadian Yu-Gi-Oh! single prices across Trinity Hobby, 401 Games and Fusion Gaming (CAD).",
+              description="Canadian Yu-Gi-Oh! single prices across Canadian stores (CAD).",
               lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_methods=["GET"],
                    allow_origins=[o.strip() for o in os.environ.get("API_CORS_ORIGINS",

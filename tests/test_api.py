@@ -165,3 +165,22 @@ def test_image_hosts_are_restricted_and_resized():
     assert images.allowed("https://cdn.shopify.com/s/files/x.jpg")
     assert not images.allowed("https://evil.example.com/x.jpg") and not images.allowed("http://cdn.shopify.com/x")
     assert images.sized("https://cdn.shopify.com/x.jpg?v=1") == "https://cdn.shopify.com/x.jpg?v=1&width=480"
+
+
+def test_stores_without_a_recent_good_crawl_are_hidden(client):
+    import psycopg
+
+    def age_fusion(interval: str):
+        with psycopg.connect(URL, autocommit=True) as conn:
+            conn.execute("UPDATE scrape_runs r SET finished_at = finished_at + %s::interval FROM stores s "
+                         "WHERE s.id = r.store_id AND s.slug = 'fusion'", (interval,))
+
+    age_fusion("-4 days")  # older than API_MAX_DATA_AGE_HOURS (72)
+    try:
+        assert [r["slug"] for r in client.get("/api/stores").json()] == ["401games", "trinity"]
+        key = "MACR-EN043|super-rare|base"
+        assert "fusion" not in {o["store"] for o in client.get(f"/api/cards/{key}").json()["offers"]}
+        deals = client.get("/api/deals", params={"limit": 100}).json()
+        assert not any("fusion" in (d["cheapest_store"], d["priciest_store"]) for d in deals)
+    finally:
+        age_fusion("4 days")
