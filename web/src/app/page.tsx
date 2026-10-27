@@ -102,7 +102,7 @@ async function Stats() {
 async function SetList() {
   const sets = (await getSets()).filter((s) => s.set_name).slice(0, 24);
   return (
-    <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+    <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
       {sets.map((s) => (
         <li key={s.set_code}>
           <Link

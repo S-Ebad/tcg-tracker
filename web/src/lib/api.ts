@@ -43,6 +43,43 @@ export type Deal = {
   saving_pct: number;
 };
 
+export type Offer = {
+  store: string;
+  store_name: string;
+  edition: string | null;
+  condition: string | null;
+  price: number;
+  quantity: number | null;
+  in_stock: boolean;
+  url: string;
+  last_seen: string;
+};
+
+export type CardDetail = {
+  card_key: string;
+  name: string;
+  card_number: string;
+  set_code: string;
+  set_name: string | null;
+  rarity: string;
+  art_label: string | null;
+  editions: (string | null)[];
+  cheapest_nm: number | null;
+  stores_in_stock: number;
+  offers: Offer[];
+  other_printings: { card_key: string; card_number: string; rarity: string; art_label: string | null; min_price: number | null }[];
+};
+
+export type HistoryPoint = {
+  edition: string | null;
+  condition: string | null;
+  observed_at: string;
+  price: number;
+  in_stock: boolean;
+  source: string;
+};
+export type HistorySeries = { store: string; points: HistoryPoint[] };
+
 type Params = Record<string, string | number | boolean | undefined>;
 
 async function get<T>(path: string, params: Params = {}): Promise<T> {
@@ -52,6 +89,7 @@ async function get<T>(path: string, params: Params = {}): Promise<T> {
     Object.entries(params).flatMap(([k, v]) => (v === undefined || v === "" ? [] : [[k, String(v)]])),
   );
   const res = await fetch(`${API_URL}${path}${qs.size ? `?${qs}` : ""}`);
+  if (res.status === 404) return null as T; // unknown card: the page shows notFound()
   if (!res.ok) throw new Error(`API ${path} answered ${res.status}`);
   return res.json() as Promise<T>;
 }
@@ -59,10 +97,8 @@ async function get<T>(path: string, params: Params = {}): Promise<T> {
 export const getStores = () => get<Store[]>("/api/stores");
 export const getSets = () => get<SetSummary[]>("/api/sets");
 export const getDeals = (params: Params = {}) => get<Deal[]>("/api/deals", params);
+export const getCard = (key: string) => get<CardDetail | null>(`/api/cards/${encodeURIComponent(key)}`);
+export const getHistory = (key: string) => get<HistorySeries[]>(`/api/cards/${encodeURIComponent(key)}/history`);
 export const searchPrintings = (params: Params) => get<{ total: number; items: Printing[] }>("/api/search", params);
 
-// browser-facing image path (proxied to the API by next.config.ts)
-export const imageSrc = (cardKey: string) => `/images/${encodeURIComponent(cardKey)}`;
-
-export const cad = (n: number | null | undefined) =>
-  n == null ? "–" : n.toLocaleString("en-CA", { style: "currency", currency: "CAD" });
+export { cad, cardHref, CONDITION_NAMES, imageSrc } from "@/lib/format";

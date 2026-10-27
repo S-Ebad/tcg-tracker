@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Suspense } from "react";
 
 import { HeaderSearch } from "@/components/header-search";
 
@@ -25,7 +26,9 @@ export function SiteHeader() {
             </Link>
           ))}
         </nav>
-        <HeaderSearch />
+        <Suspense>
+          <HeaderSearch />
+        </Suspense>
       </div>
     </header>
   );

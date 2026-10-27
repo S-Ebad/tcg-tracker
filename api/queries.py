@@ -117,14 +117,14 @@ def card(conn, card_key: str) -> dict | None:
 
 
 def history(conn, card_key: str, edition: str | None, condition: str | None) -> list[dict]:
-    """Price history points per store (every recorded change), oldest first."""
+    """Price history points per live store (every recorded change), oldest first."""
     with conn.cursor(row_factory=dict_row) as cur:
         rows = cur.execute(
-            """SELECT s.slug AS store, v.edition, v.condition, h.observed_at, h.price::float AS price, h.in_stock,
+            f"""SELECT s.slug AS store, v.edition, v.condition, h.observed_at, h.price::float AS price, h.in_stock,
                       h.source
                FROM price_history h JOIN variants v ON v.id = h.variant_id
                JOIN listings l ON l.id = v.listing_id JOIN stores s ON s.id = l.store_id
-               WHERE l.card_key = %(k)s AND (%(ed)s::text IS NULL OR v.edition = %(ed)s)
+               WHERE l.card_key = %(k)s AND {_LIVE_STORE} AND (%(ed)s::text IS NULL OR v.edition = %(ed)s)
                  AND (%(cond)s::text IS NULL OR v.condition = %(cond)s)
                ORDER BY s.slug, h.observed_at""", {"k": card_key, "ed": edition, "cond": condition}).fetchall()
     series: dict[str, list] = {}
