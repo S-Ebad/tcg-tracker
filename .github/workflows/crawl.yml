@@ -1,0 +1,69 @@
+name: Crawl
+
+# Crawls every scheduled store into the cloud database (Neon) twice a day, so nothing depends on a PC being on.
+# Times are UTC: 11:15 and 23:15 = 07:15 / 19:15 Toronto in summer (06:15 / 18:15 in winter). GitHub may start a
+# scheduled run some minutes late.
+on:
+  schedule:
+    - cron: "15 11,23 * * *"
+  workflow_dispatch:
+    inputs:
+      spiders:
+        description: 'Stores to crawl, as a JSON list (e.g. ["hobbiesville"])'
+        default: '["trinity", "401games", "hobbiesville"]'
+
+# never two crawls of the same store at once (a manual run waits for a scheduled one, and the other way round)
+concurrency:
+  group: crawl
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
+  TCG_CONTACT_EMAIL: ${{ secrets.TCG_CONTACT_EMAIL }}
+  ALERT_DISCORD_WEBHOOK_URL: ${{ secrets.ALERT_DISCORD_WEBHOOK_URL }}
+  ALERT_DISCORD_WEBHOOK_URL_401GAMES: ${{ secrets.ALERT_DISCORD_WEBHOOK_URL_401GAMES }}
+  ALERT_DISCORD_WEBHOOK_URL_HOBBIESVILLE: ${{ secrets.ALERT_DISCORD_WEBHOOK_URL_HOBBIESVILLE }}
+
+jobs:
+  migrate:
+    # once, before the crawls, so parallel crawls never race to apply a migration
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: python migrate.py
+
+  crawl:
+    needs: migrate
+    runs-on: ubuntu-latest
+    # 401 takes ~30-50 min; Hobbiesville stops itself after 100 min of Shopify 429s (CLOSESPIDER_TIMEOUT)
+    timeout-minutes: 110
+    strategy:
+      fail-fast: false
+      matrix:
+        spider: ${{ fromJSON(github.event.inputs.spiders || '["trinity", "401games", "hobbiesville"]') }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Crawl ${{ matrix.spider }}
+        # run quality (counts, problems, HTTP errors) is checked and alerted by the in-crawl monitor
+        run: scrapy crawl ${{ matrix.spider }}
+      - name: Alert if the crawl process itself failed
+        if: failure()
+        run: >
+          python -c "import sys; sys.path.insert(0, 'scripts'); import scheduled;
+          scheduled.alert('tcg-tracker CRITICAL: cloud crawl of ${{ matrix.spider }} failed or timed out:
+          ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}',
+          store='${{ matrix.spider }}')"
