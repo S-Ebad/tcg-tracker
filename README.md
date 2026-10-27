@@ -25,17 +25,41 @@ Built by [kiunga400-hub](https://github.com/kiunga400-hub).
   a crawl that passed completeness checks. A partial or suspicious crawl changes nothing.
 - **Monitored like production:** every run is checked (item counts, parse-problem rate, field null-rate jumps,
   HTTP errors) and failures go to Discord, one channel per store.
-- **Tested on real data:** 215 tests, including adapter tests on saved full crawls of each store and end-to-end
+- **Tested on real data:** 216 tests, including adapter tests on saved full crawls of each store and end-to-end
   `scrapy crawl` runs against a mock site. CI on Python 3.12 and 3.14 with Postgres 16.
 - **Polite and permitted:** each store gave permission to be listed; robots.txt obeyed, one request at a time,
   `Retry-After` honoured, a contact address in the User-Agent. Rate limits are respected, never worked around.
 
 **Stack:** Python, Scrapy, PostgreSQL, FastAPI · Next.js 16, React, Tailwind CSS, shadcn/ui, Recharts · GitHub Actions.
 
-**Hosting ($0):** crawls run on GitHub Actions twice a day (`.github/workflows/crawl.yml`) into a Neon Postgres
-database; the API runs on Render (`render.yaml`, free plan: it sleeps when idle, so the first request after a quiet
-spell takes ~30-50 s) and the website on Vercel. A daily freshness check (`freshness.yml`) alerts on Discord if a
-store's crawls stop.
+### How it runs (all free tiers, no PC needed)
+
+```mermaid
+flowchart LR
+    subgraph GH["GitHub Actions"]
+        C["crawl.yml<br/>07:15 & 19:15"]
+        F["freshness.yml<br/>12:30"]
+    end
+    S["Store catalogues<br/>Hotyon · Fast Simon · Shopify"] --> C
+    C -->|"verified runs"| DB[("Neon Postgres")]
+    F --> DB
+    C -. "alerts" .-> D["Discord"]
+    F -. "alerts" .-> D
+    DB --> API["FastAPI on Render"]
+    API --> WEB["Next.js on Vercel"]
+    WEB --> U["Visitors"]
+```
+
+| Piece | Where | Notes |
+|---|---|---|
+| Crawls | GitHub Actions (`.github/workflows/crawl.yml`) | migrations once, then one job per store in parallel; a crashed or timed-out crawl alerts on Discord |
+| Freshness check | GitHub Actions (`freshness.yml`) | alerts if a store has had no good crawl for 26 h, which catches crawls that never started |
+| Database | Neon (Postgres 18, free plan, 1 GB) | ~183 MB on 2026-10-27; CI tests on Postgres 16 |
+| API | Render (`render.yaml`, free plan) | sleeps after 15 idle minutes, so the first request after a quiet spell takes ~30-50 s |
+| Website | Vercel (`web/`) | redeploys on every push to `main` |
+
+Secrets (`NEON_DATABASE_URL`, `TCG_CONTACT_EMAIL`, the Discord webhooks) live in GitHub Actions secrets and Render
+environment variables, never in the repo.
 
 ### How it was built
 
@@ -67,7 +91,7 @@ API below, never to the database.
 
 | Page | What it shows |
 |---|---|
-| `/` | Search, deal of the day, stats, browse by set |
+| `/` | Search with suggestions as you type, deal of the day, stats, browse by set |
 | `/search?q=` | Every printing matching a name or card number, cheapest price and number of stores |
 | `/cards/[cardKey]` | Prices at every store per edition and condition, cheapest highlighted, links to buy, price history chart, other printings |
 | `/sets`, `/sets/[code]` | Sets A–Z; a set's cards in number order with sort, rarity and store filters |
@@ -132,9 +156,10 @@ Then open http://localhost:8000/docs to try every endpoint in the browser:
 Search ignores punctuation ("maxx c" finds `Maxx "C"`). The website's origin must be listed in `API_CORS_ORIGINS`
 (default `http://localhost:3000`). Images are only fetched from Shopify's CDN, at 480 px width, with a 5 MB cap.
 
-### Scheduled runs, backups and alerts
+### Running on one PC instead (optional)
 
-`scripts/scheduled.py` is what the scheduler runs:
+The live setup runs in the cloud (see *How it runs*). To run everything on one machine instead, `scripts/scheduled.py`
+is what a local scheduler runs:
 
 | Command | What it does |
 |---|---|
@@ -202,6 +227,10 @@ job-level alerts (backup, freshness, crashes) keep using `ALERT_DISCORD_WEBHOOK_
 | `adapter_fusion.py` | Fusion Gaming's adapter: reshapes a Shopify product and reuses Trinity's parser (same BinderPOS conventions) |
 | `adapter_hobbiesville.py` | Hobbiesville's adapter: card number, rarity, edition and set from structured `Key:Value` tags |
 | `tcg_tracker/spiders/fusion.py`, `hobbiesville.py` | Shopify `products.json` crawl; Hobbiesville subclasses Fusion's spider with its own URL and settings |
+| `api/` | Read-only FastAPI service the website uses (search, cards, history, sets, deals, stores, images) |
+| `web/` | Next.js website |
+| `.github/workflows/` | `ci.yml` (ruff + pytest), `crawl.yml` and `freshness.yml` (the cloud schedule) |
+| `render.yaml` | Render Blueprint for the API |
 | `db.py` | Batched upserts (COPY into staging tables + set-based SQL), price history, closing a run |
 | `tcg_tracker/pipelines.py` | Glue: parse, save in transactions of 500, finish the run, tell the monitor |
 | `tcg_tracker/monitoring.py` | Checks every run and sends alerts |
@@ -306,7 +335,7 @@ Alerts always go to the log and to `scrape_runs.alerts`. Set `ALERT_DISCORD_WEBH
 ## Tests
 
 ```bash
-pytest                    # 215 tests, about 11 minutes (end-to-end crawls of three stores)
+pytest                    # 216 tests, about 11 minutes (end-to-end crawls of three stores)
 ruff check .
 ```
 
