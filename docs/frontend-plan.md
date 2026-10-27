@@ -1,6 +1,6 @@
 # Front end plan (demo)
 
-Status: draft for review, 2026-10-26. Based on the mockups agreed in chat.
+Status: draft for review, 2026-10-26. Based on the mockups reviewed on 2026-10-26.
 
 ## Goal
 

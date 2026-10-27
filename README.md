@@ -1,7 +1,46 @@
-# tcg-tracker
+# Card Scout CA (tcg-tracker)
 
-Tracks Yu-Gi-Oh! single-card prices and stock at Canadian online stores, with price history.
-Stores (prices in CAD, in-stock Yu-Gi-Oh singles only):
+**Find the cheapest copy of any Yu-Gi-Oh! single across Canadian stores.**
+
+Canadian players compare prices by opening five store tabs and searching each one. Card Scout CA does that for
+them: it checks every in-stock Yu-Gi-Oh! single at Canadian stores twice a day, matches the same printing across
+stores, and shows who's cheapest for each edition and condition, with price history and a link to buy on the store's
+own site.
+
+Built by [kiunga400-hub](https://github.com/kiunga400-hub).
+
+### Highlights
+
+- **~50,000 live listings from three stores**, matched into one catalogue: ~2,760 cards are sold at both
+  401 Games and Hobbiesville, ~9,000 at both Trinity and 401.
+- **Every store's data, read from the source each store already uses.** Two stores serve their catalogue from a
+  search provider's API (Hotyon, Fast Simon); the third uses Shopify's product feed. No HTML scraping and no
+  headless browsers.
+- **Shared card identity** (`CODE|rarity|art`): titles like `Ash Blossom & Joyous Spring [RA05-EN091] Ultra Rare`,
+  `Ash Blossom - RA05-EN091 - Ultra Rare - 1st Edition` and tag-only data all resolve to the same card. Anything
+  that can't be identified is quarantined, never guessed.
+- **Trustworthy stock data:** stores hide sold-out cards, so "out of stock" is inferred from absence, but only from
+  a crawl that passed completeness checks. A partial or suspicious crawl changes nothing.
+- **Monitored like production:** every run is checked (item counts, parse-problem rate, field null-rate jumps,
+  HTTP errors) and failures go to Discord, one channel per store.
+- **Tested on real data:** 215 tests, including adapter tests on saved full crawls of each store and end-to-end
+  `scrapy crawl` runs against a mock site. CI on Python 3.12 and 3.14 with Postgres 16.
+- **Polite and permitted:** each store gave permission to be listed; robots.txt obeyed, one request at a time,
+  `Retry-After` honoured, a contact address in the User-Agent. Rate limits are respected, never worked around.
+
+**Stack:** Python, Scrapy, PostgreSQL, FastAPI · Next.js 16, React, Tailwind CSS, shadcn/ui, Recharts · GitHub Actions.
+
+### How it was built
+
+I designed and directed this project and built it with an AI coding assistant (Claude Code). I chose the stores and
+got each one's permission to list their prices, set the requirements (reliability, loud failures, tests on real
+data), and made the product and engineering calls documented below: which data source to use for each store and
+why, how card identity works, when a crawl is trusted, how out-of-stock is decided, and how to handle stores that
+rate-limit bots.
+
+## Stores
+
+Prices in CAD, in-stock Yu-Gi-Oh! singles only:
 
 | Store | Spider | Data source | Size (2026-10-26) |
 |---|---|---|---|
@@ -14,7 +53,27 @@ Cards line up across stores on the same `card_key`: Trinity–401 share ~9,000, 
 Trinity–Fusion ~4,200, and ~3,700 cards are at all three. Hobbiesville shares ~2,760 in-stock cards with 401 and
 ~1,830 with Trinity; ~1,380 are at all three scheduled stores (Trinity, 401, Hobbiesville).
 
-Built with Scrapy and PostgreSQL. Priorities: reliable data, loud failures, tests on real data.
+## Website
+
+`web/` is the front end (Next.js 16 App Router with cache components, Tailwind, shadcn/ui). It only talks to the
+API below, never to the database.
+
+| Page | What it shows |
+|---|---|
+| `/` | Search, deal of the day, stats, browse by set |
+| `/search?q=` | Every printing matching a name or card number, cheapest price and number of stores |
+| `/cards/[cardKey]` | Prices at every store per edition and condition, cheapest highlighted, links to buy, price history chart, other printings |
+| `/sets`, `/sets/[code]` | Sets A–Z; a set's cards in number order with sort, rarity and store filters |
+| `/deals` | Biggest savings for the same card, edition and condition between stores |
+| `/stores` | Each store and when it was last checked |
+
+Mobile first, dark mode follows the device. A store only appears while it has a complete crawl from the last 72
+hours, so the site never shows stale prices.
+
+```bash
+npm --prefix web install
+npm --prefix web run dev        # http://localhost:3000, needs the API on :8000 (API_URL to change)
+```
 
 ## Quick start
 
@@ -255,7 +314,7 @@ ruff check .
 
 ## Adding a store
 
-Ask first (see `CLAUDE.md`): each store is a commitment to keep its scraper working.
+Get the store's permission first: each store is also a commitment to keep its scraper working.
 
 401 Games was added this way; `adapter_401.py` and `tcg_tracker/spiders/games401.py` are the template. For another
 Shopify store whose collection is under 25,000 products, subclass `FusionSpider` like `hobbiesville.py` does.

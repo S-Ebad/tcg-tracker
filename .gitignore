@@ -29,3 +29,8 @@ tests/*.json
 
 # API image cache (api/images.py)
 .cache/
+
+# AI assistant notes (kept local)
+CLAUDE.md
+CLAUDE.local.md
+.claude/
